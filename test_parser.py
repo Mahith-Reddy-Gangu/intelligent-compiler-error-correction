@@ -1,139 +1,127 @@
-"""
-Simple C Parser Test Script
-Uses ANTLR4 Python runtime to test the SimpleC grammar
-
-Prerequisites:
-1. Install ANTLR4 Python runtime:
-   pip install antlr4-python3-runtime
-
-2. Generate lexer and parser from grammar:
-   antlr4 -Dlanguage=Python3 SimpleC.g4
-   
-   This creates:
-   - SimpleCLexer.py
-   - SimpleCParser.py
-   - SimpleCListener.py (optional)
-"""
-
 import sys
-from antlr4 import *
+import re
+import argparse
+import uuid
+from typing import List, Dict, Optional
+
+from antlr4 import InputStream, CommonTokenStream
 from antlr4.error.ErrorListener import ErrorListener
+from antlr4.tree.Tree import TerminalNodeImpl
 
 from compiler.error_classifier import classify_error_message
 from compiler.error_corrector import apply_correction
-from compiler.ir_analysis import analyze_parse_tree
+from compiler.lexical_corrector import fix_common_lexical_issues
+from compiler.ai_error_corrector import ai_correct_source_patch_mode
+from compiler.ai_error_corrector import ai_generate_patch_candidates
+from compiler.identifier_corrector import fix_identifier_typo_at
+from compiler.semantic_checker import SemanticChecker
+from compiler.unused_var_fixer import remove_unused_decl_at
+from compiler.repair_logger import RepairLogger
+from compiler.security_checker import SecurityChecker
+from compiler.taint_checker import TaintChecker
+from compiler.string_flow_checker import StringFlowChecker
+from compiler.symbol_table_builder import SymbolTableBuilder
 
-# Import generated lexer and parser
-# These will be available after running: antlr4 -Dlanguage=Python3 SimpleC.g4
 try:
-    from SimpleCLexer import SimpleCLexer
-    from SimpleCParser import SimpleCParser
+    from generated.SimpleCLexer import SimpleCLexer
+    from generated.SimpleCParser import SimpleCParser
 except ImportError:
-    print("ERROR: SimpleCLexer and SimpleCParser not found!")
-    print("Please generate them first using:")
-    print("  antlr4 -Dlanguage=Python3 SimpleC.g4")
+    print("ERROR: generated SimpleCLexer/SimpleCParser not found!")
+    print("Generate them from grammar using ANTLR first.")
     sys.exit(1)
 
 
-class SyntaxErrorListener(ErrorListener):
+DETERMINISTIC_REASONS = {
+    "missing_semicolon",
+    "missing_rbrace",
+    "missing_lbrace",
+    "main_lparen_expected",
+}
+
+class CollectingErrorListener(ErrorListener):
     """
-    Custom error listener to capture and format syntax errors.
-    Overrides the default ANTLR error handling to provide clearer output.
+    Collect errors from BOTH lexer and parser.
+
+    ANTLR calls syntaxError for lexer problems too (token recognition error, etc.)
+    We tag them by stage so the pipeline can decide what to do.
     """
-    
-    def __init__(self):
+
+    def __init__(self, stage: str):
         super().__init__()
-        self.errors = []
-    
+        self.stage = stage  # "LEX" or "PARSE"
+        self.errors: List[Dict] = []
+
     def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e):
-        """
-        Called when ANTLR encounters a syntax error.
-        
-        Args:
-            recognizer: The parser that detected the error
-            offendingSymbol: The token that caused the error
-            line: Line number where error occurred
-            column: Column position where error occurred
-            msg: Error message from ANTLR
-            e: The exception object (if any)
-        """
+        off_text = None
+        try:
+            if offendingSymbol is not None and hasattr(offendingSymbol, "text"):
+                off_text = offendingSymbol.text
+        except Exception:
+            off_text = None
+
         self.errors.append(
             {
+                "stage": self.stage,
                 "line": line,
                 "column": column,
                 "msg": msg,
+                "offending": off_text,
             }
         )
-    
-    def has_errors(self):
-        """Check if any errors were encountered"""
-        return len(self.errors) > 0
-    
-    def get_errors(self):
-        """Return list of all error messages"""
-        return [f"Line {e['line']}:{e['column']} - Syntax Error: {e['msg']}" for e in self.errors]
 
-    def get_error_objects(self):
-        """Return list of structured errors"""
+    def has_errors(self) -> bool:
+        return len(self.errors) > 0
+
+    def get_errors(self) -> List[str]:
+        out = []
+        for e in self.errors:
+            stage = e.get("stage", "?")
+            off = e.get("offending")
+            off_part = f" (offending: {off})" if off else ""
+            out.append(f"Line {e['line']}:{e['column']} - {stage} Error: {e['msg']}{off_part}")
+        return out
+
+    def get_error_objects(self) -> List[Dict]:
         return list(self.errors)
 
 
-def parse_source(source_text, source_name="<input>"):
-    """
-    Parse a C source string using the SimpleC grammar.
-
-    Args:
-        source_text: The C source code as a string
-        source_name: A human-friendly label for logging
-
-    Returns:
-        tuple: (parse_tree, error_listener, parser)
-    """
-    print(f"\n{'='*70}")
+def parse_source(source_text: str, source_name: str = "<input>"):
+    print(f"\n{'=' * 70}")
     print(f"Parsing: {source_name}")
-    print('='*70)
+    print("=" * 70)
 
-    # Step 1: Create input stream from source text
     input_stream = InputStream(source_text)
 
-    # Step 2: Create a lexer that feeds off the input stream
     lexer = SimpleCLexer(input_stream)
+    lexer.removeErrorListeners()
+    lex_listener = CollectingErrorListener(stage="LEX")
+    lexer.addErrorListener(lex_listener)
 
-    # Step 3: Create a buffer of tokens pulled from the lexer
     token_stream = CommonTokenStream(lexer)
 
-    # Step 4: Create a parser that feeds off the tokens buffer
     parser = SimpleCParser(token_stream)
-
-    # Step 5: Remove default error listeners and add custom one
     parser.removeErrorListeners()
-    error_listener = SyntaxErrorListener()
-    parser.addErrorListener(error_listener)
+    parse_listener = CollectingErrorListener(stage="PARSE")
+    parser.addErrorListener(parse_listener)
 
-    # Step 6: Begin parsing at the 'program' rule (entry point)
     tree = parser.program()
 
-    return tree, error_listener, parser
+    combined = {"lex": lex_listener, "parse": parse_listener}
+    return tree, combined, parser
 
 
-def parse_file(filename):
-    """
-    Parse a C source file using the SimpleC grammar.
-    
-    Args:
-        filename: Path to the C file to parse
-    
-    Returns:
-        tuple: (parse_tree, error_listener)
-    """
+def parse_file(filename: str):
     try:
-        with open(filename, 'r', encoding='utf-8') as handle:
+        with open(filename, "r", encoding="utf-8") as handle:
             source_text = handle.read()
 
-        tree, error_listener, parser = parse_source(source_text, filename)
+        # Normalize common invisible leading characters that can poison parsing
+        if source_text.startswith("\ufeff"):
+            source_text = source_text.lstrip("\ufeff")
 
-        return tree, error_listener, parser, source_text
-        
+        tree, listeners, parser = parse_source(source_text, filename)
+        return tree, listeners, parser, source_text
+
     except FileNotFoundError:
         print(f"ERROR: File '{filename}' not found!")
         return None, None, None, None
@@ -142,160 +130,913 @@ def parse_file(filename):
         return None, None, None, None
 
 
-def print_parse_tree(tree, parser, indent=0):
+def has_any_errors(listeners: Dict[str, CollectingErrorListener]) -> bool:
+    return listeners["lex"].has_errors() or listeners["parse"].has_errors()
+
+
+def get_all_error_strings(listeners: Dict[str, CollectingErrorListener]) -> List[str]:
+    return listeners["lex"].get_errors() + listeners["parse"].get_errors()
+
+
+def get_first_error_object(listeners: Dict[str, CollectingErrorListener]) -> Optional[Dict]:
     """
-    Recursively print the parse tree in a readable format.
-    
-    Args:
-        tree: The parse tree node
-        parser: The parser instance (for rule names)
-        indent: Current indentation level
+    Prefer lexer errors first.
+    But aggressively skip bogus parser start-of-file errors at line 1, col 0
+    whenever any later real parse error exists.
     """
-    # Get the node name
-    if tree.getChildCount() == 0:
-        # Leaf node (terminal/token)
-        node_text = tree.getText()
-        print("  " * indent + f"└─ {node_text}")
-    else:
-        # Internal node (parser rule)
-        rule_name = parser.ruleNames[tree.getRuleIndex()] if hasattr(tree, 'getRuleIndex') else 'unknown'
-        print("  " * indent + f"[{rule_name}]")
-        
-        # Recursively print children
-        for i in range(tree.getChildCount()):
-            print_parse_tree(tree.getChild(i), parser, indent + 1)
+    if listeners["lex"].has_errors():
+        lex_errs = listeners["lex"].get_error_objects()
+
+        # If lexer itself has multiple errors, prefer the first non-start junk one
+        for e in lex_errs:
+            line = e.get("line")
+            col = e.get("column")
+            msg = (e.get("msg") or "").lower()
+            off = e.get("offending")
+
+            bogus = (
+                line == 1
+                and col == 0
+                and (
+                    off is None
+                    or str(off) == ""
+                    or str(off).strip() == ""
+                    or str(off) in {"\ufeff", "\x00"}
+                )
+                and (
+                    "token recognition error" in msg
+                    or "extraneous input" in msg
+                    or "mismatched input" in msg
+                )
+            )
+
+            if not bogus:
+                return e
+
+        return lex_errs[0]
+
+    if not listeners["parse"].has_errors():
+        return None
+
+    errs = listeners["parse"].get_error_objects()
+
+    def is_bogus_start_error(e: Dict) -> bool:
+        msg = (e.get("msg") or "").lower()
+        line = e.get("line")
+        col = e.get("column")
+        off = e.get("offending")
+
+        off_str = "" if off is None else str(off)
+
+        return (
+            line == 1
+            and col == 0
+            and (
+                off is None
+                or off_str == ""
+                or off_str.strip() == ""
+                or off_str in {"\ufeff", "\x00"}
+            )
+            and (
+                "extraneous input" in msg
+                or "mismatched input" in msg
+                or "no viable alternative" in msg
+            )
+        )
+
+    # If there is any later parse error, skip bogus start-of-file junk
+    for e in errs:
+        if not is_bogus_start_error(e):
+            return e
+
+    return errs[0]
+
+
+def print_parse_tree(node, parser, indent: int = 0):
+    pad = "  " * indent
+
+    if isinstance(node, TerminalNodeImpl):
+        text = node.getText()
+        print(pad + f"└─ {text}")
+        return
+
+    child_count = node.getChildCount() if hasattr(node, "getChildCount") else 0
+    if child_count == 0:
+        text = node.getText() if hasattr(node, "getText") else str(node)
+        print(pad + f"└─ {text}")
+        return
+
+    rule_name = "unknown"
+    try:
+        if hasattr(node, "getRuleIndex"):
+            idx = node.getRuleIndex()
+            if 0 <= idx < len(parser.ruleNames):
+                rule_name = parser.ruleNames[idx]
+    except Exception:
+        rule_name = "unknown"
+
+    print(pad + f"[{rule_name}]")
+    for i in range(child_count):
+        print_parse_tree(node.getChild(i), parser, indent + 1)
+
+
+def build_symbols(tree):
+    builder = SymbolTableBuilder()
+    builder.visit(tree)
+    return builder.get_symbols()
 
 
 def print_analysis(tree):
-    analysis = analyze_parse_tree(tree)
-
     print("\nIR Analysis: Variable Declaration Check")
     print("-" * 70)
+
+    symbols = build_symbols(tree)
+
     print("Symbol Table:")
-    for name, line in analysis["symbol_table"].items():
-        print(f"  {name} (declared at line {line})")
-
-    if analysis["errors"]:
-        print("\nAnalysis Errors:")
-        for err in analysis["errors"]:
-            print(f"  {err}")
+    if symbols:
+        for n, info in symbols.items():
+            print(f"  {n}: {info}")
     else:
-        print("\nAnalysis Result: No undeclared assignments detected")
+        print("  <empty>")
+
+    print("\nAnalysis Errors: None")
+    return symbols
 
 
-def test_file(filename):
+def _print_semantic_issues(issues):
     """
-    Test a single C file: parse it and display results.
-    
-    Args:
-        filename: Path to the C file to test
+    issues: list[dict] returned by SemanticChecker.get_issues()
+
+    kinds:
+      - undeclared
+      - redeclared
+      - use_before_declare
+      - unused
     """
-    tree, error_listener, parser, source_text = parse_file(filename)
-    
-    if tree is None:
+    if not issues:
+        print("No semantic issues.")
         return
-    
-    # Check if parsing succeeded
-    if error_listener.has_errors():
-        # Invalid file: print syntax errors
-        print("\nPARSING FAILED - Syntax Errors Detected:")
-        print("-" * 70)
-        for error in error_listener.get_errors():
-            print(f"  {error}")
-        print("-" * 70)
 
-        error_obj = error_listener.get_error_objects()[0]
-        classification = classify_error_message(error_obj["msg"])
+    order = ["undeclared", "redeclared", "use_before_declare", "unused"]
+    buckets = {k: [] for k in order}
+    other = []
 
-        print("\nError Classification:")
-        print(f"  Fixable: {classification.fixable}")
-        print(f"  Category: {classification.category}")
-        print(f"  Reason: {classification.reason}")
-
-        if classification.fixable:
-            corrected_source, applied_fix = apply_correction(
-                source_text,
-                error_obj["line"],
-                error_obj["column"],
-                classification,
-            )
-
-            if applied_fix is None:
-                print("\nFix Applied: None (no deterministic fix matched)")
-                print("Re-Parsing Result: UNFIXABLE")
-                return
-
-            print(f"\nFix Applied: {applied_fix}")
-
-            reparsed_tree, reparsed_listener, reparsed_parser = parse_source(
-                corrected_source,
-                f"{filename} (corrected)",
-            )
-
-            if reparsed_listener.has_errors():
-                print("\nRe-Parsing Result: FAILED")
-                print("-" * 70)
-                for error in reparsed_listener.get_errors():
-                    print(f"  {error}")
-                print("-" * 70)
-                print("Re-Parsing Result: UNFIXABLE")
-                return
-
-            print("\nRe-Parsing Result: SUCCESSFUL")
-            print("-" * 70)
-            print("Parse Tree:")
-            print("-" * 70)
-
-            print_parse_tree(reparsed_tree, reparsed_parser)
-
-            print("\nS-Expression Format:")
-            print(reparsed_tree.toStringTree(recog=reparsed_parser))
-            print("-" * 70)
-
-            print_analysis(reparsed_tree)
+    for it in issues:
+        k = it.get("kind", "unknown")
+        if k in buckets:
+            buckets[k].append(it)
         else:
-            print("\nFix Applied: None (error classified as unfixable)")
-            print("Re-Parsing Result: UNFIXABLE")
-    else:
-        # Valid file: print parse tree
-        print("\nPARSING SUCCESSFUL")
+            other.append(it)
+
+    def fmt(it):
+        line = it.get("line", "?")
+        col = it.get("col", "?")
+        name = it.get("name", "")
+        msg = it.get("msg", "")
+        if name:
+            return f"L{line}:{col}  {name}  -> {msg}"
+        return f"L{line}:{col}  -> {msg}"
+
+    total = 0
+    for k in order:
+        arr = buckets[k]
+        if not arr:
+            continue
+        total += len(arr)
+        title = {
+            "undeclared": "UNDECLARED IDENTIFIERS",
+            "redeclared": "REDECLARATIONS",
+            "use_before_declare": "USE-BEFORE-DECLARE",
+            "unused": "UNUSED VARIABLES",
+        }.get(k, k.upper())
+
+        print(f"{title} ({len(arr)}):")
+        for it in arr:
+            print("  - " + fmt(it))
+        print()
+
+    if other:
+        total += len(other)
+        print(f"OTHER ({len(other)}):")
+        for it in other:
+            print("  - " + fmt(it))
+        print()
+
+    print(f"Total semantic issues: {total}")
+
+
+def run_security_checks(source_text: str) -> bool:
+    security_checker = SecurityChecker()
+    taint_checker = TaintChecker()
+    string_checker = StringFlowChecker()
+
+    issues = []
+    issues.extend(security_checker.check(source_text))
+    issues.extend(taint_checker.check(source_text))
+    issues.extend(string_checker.check(source_text))
+
+    if not issues:
+        return True
+
+    print("\nSECURITY ANALYSIS RESULTS")
+    print("-" * 70)
+
+    total_score = 0
+    block = False
+
+    for issue in issues:
+        score = getattr(issue, "score", 0)
+        total_score += score
+        print(f"[{issue.severity}] {issue.message} (score={score})")
+
+        if issue.severity == "CRITICAL":
+            block = True
+
+    print(f"Total security score: {total_score}")
+
+    if block or total_score >= 6:
+        print("\nFINAL RESULT: BLOCKED BY SECURITY CHECK")
+        return False
+
+    return True
+
+
+def _used_ai(applied_steps: List[str]) -> bool:
+    return any(step.startswith("AI:") for step in applied_steps)
+
+
+def _print_ai_repair_debug(working: str, tree, parser):
+    print("\nRepaired Source After AI:")
+    print("-" * 70)
+    print(working.rstrip())
+    print("-" * 70)
+
+    print("Parse Tree After AI Repair:")
+    print("-" * 70)
+    print_parse_tree(tree, parser)
+
+    print("\nS-Expression After AI Repair:")
+    print(tree.toStringTree(recog=parser))
+    print("-" * 70)
+
+def _select_best_ai_candidate_by_reparse(
+    filename: str,
+    current_source: str,
+    candidates,
+):
+    """
+    candidates: list of (new_source, cmd_text, heuristic_score)
+
+    Selection priority:
+      1. candidate that fully parses
+      2. candidate with fewer remaining errors
+      3. higher heuristic score
+      4. smaller edit delta
+
+    Returns:
+      (best_source, best_cmd, best_tree, best_listeners, best_parser)
+      or
+      (current_source, None, None, None, None) if no usable candidate
+    """
+    if not candidates:
+        return current_source, None, None, None, None
+
+    best = None
+    best_key = None
+
+    print("\nAI candidate reparsing:")
+    print("-" * 70)
+
+    for idx, (cand_src, cmd, heuristic_score) in enumerate(candidates, 1):
+        tree_c, listeners_c, parser_c = parse_source(cand_src, f"{filename} (ai-candidate-{idx})")
+        if tree_c is None:
+            print(f"[{idx}] {cmd} -> rejected (tree is None)")
+            continue
+
+        err_count = len(get_all_error_strings(listeners_c))
+        success = not has_any_errors(listeners_c)
+        delta = abs(len(cand_src) - len(current_source))
+
+        # Sort key: larger is better
+        # success first, then fewer errors, then higher heuristic score, then smaller delta
+        key = (
+            1 if success else 0,
+            -err_count,
+            heuristic_score,
+            -delta,
+        )
+
+        status = "SUCCESS" if success else f"errors={err_count}"
+        print(f"[{idx}] {cmd} -> {status}, heuristic={heuristic_score}, delta={delta}")
+
+        if best is None or key > best_key:
+            best = (cand_src, cmd, tree_c, listeners_c, parser_c)
+            best_key = key
+
+    print("-" * 70)
+
+    if best is None:
+        return current_source, None, None, None, None
+
+    return best
+
+def _run_semantic_phase(
+    filename: str,
+    working: str,
+    tree,
+    listeners,
+    parser,
+    applied_steps: List[str],
+    logger: RepairLogger,
+) -> bool:
+    """
+    Returns True if the function fully handled output/finalization.
+    Returns False only if caller should continue, which normally should not happen.
+    """
+    MAX_SEM_EDITS = 5
+    sem_edits = 0
+
+    while sem_edits < MAX_SEM_EDITS:
+        checker = SemanticChecker()
+        checker.visit(tree)
+        issues = checker.get_issues()
+
+        if issues:
+            logger.log_semantic_issues(issues)
+
+        if not issues:
+            break
+
+        first = issues[0]
+        kind = first.get("kind")
+
+        # 1) Auto-fix UNUSED
+        if kind == "unused":
+            name = first.get("name")
+            line = first.get("line")
+            col = first.get("col")
+
+            corrected = None
+            msg = None
+
+            try:
+                corrected, msg = remove_unused_decl_at(working, line, col, name)
+            except TypeError:
+                try:
+                    corrected, msg = remove_unused_decl_at(working, line, col)
+                except TypeError:
+                    try:
+                        corrected, msg = remove_unused_decl_at(working, line, name)
+                    except Exception:
+                        corrected, msg = None, None
+            except Exception:
+                corrected, msg = None, None
+
+            if msg is None or corrected is None or corrected == working:
+                if _used_ai(applied_steps):
+                    _print_ai_repair_debug(working, tree, parser)
+
+                print("\nPARSING SUCCESSFUL (but semantic issues remain)")
+                print("-" * 70)
+                _print_semantic_issues(issues)
+                print("-" * 70)
+                logger.end_case(
+                    status="SEM_ISSUES",
+                    final_source=working,
+                    applied_steps=applied_steps,
+                    note="unused fix not applicable",
+                )
+                return True
+
+            working = corrected
+            applied_steps.append(f"SEM: {msg}")
+            logger.log_sem_step(step=msg, source_after=working)
+            sem_edits += 1
+
+            tree2, listeners2, parser2 = parse_source(working, f"{filename} (unused-removed)")
+            if tree2 is None:
+                logger.end_case(
+                    status="STOPPED",
+                    final_source=working,
+                    applied_steps=applied_steps,
+                    note="tree None after unused fix",
+                )
+                return True
+
+            if has_any_errors(listeners2):
+                print("\nStopping: unused-var fix broke parsing; refusing further edits.")
+                logger.log_parse_errors(stage="LEX/PARSE", errors=get_all_error_strings(listeners2))
+                logger.end_case(
+                    status="STOPPED",
+                    final_source=working,
+                    applied_steps=applied_steps,
+                    note="unused fix broke parsing",
+                )
+                return True
+
+            tree, listeners, parser = tree2, listeners2, parser2
+            continue
+
+        # 2) Auto-fix UNDECLARED via identifier typo correction
+        if kind == "undeclared":
+            name = first["name"]
+            line = first["line"]
+            col = first["col"]
+
+            symbols = build_symbols(tree)
+
+            corrected, msg = fix_identifier_typo_at(
+                working,
+                line,
+                col,
+                symbols,
+                max_dist=2,
+                expected_name=name,
+            )
+
+            if msg is None or corrected == working:
+                try:
+                    line_text = working.splitlines()[line - 1]
+                    idx = line_text.find(name)
+                    if idx != -1:
+                        corrected, msg = fix_identifier_typo_at(
+                            working,
+                            line,
+                            idx,
+                            symbols,
+                            max_dist=2,
+                            expected_name=name,
+                        )
+                except Exception:
+                    pass
+
+            if msg is None or corrected == working:
+                if _used_ai(applied_steps):
+                    _print_ai_repair_debug(working, tree, parser)
+
+                print("\nPARSING SUCCESSFUL (but semantic issues remain)")
+                print("-" * 70)
+                _print_semantic_issues(issues)
+                print("-" * 70)
+                logger.end_case(
+                    status="SEM_ISSUES",
+                    final_source=working,
+                    applied_steps=applied_steps,
+                    note="undeclared fix not applicable",
+                )
+                return True
+
+            working = corrected
+            applied_steps.append(f"SYM: {msg}")
+            logger.log_sem_step(step=msg, source_after=working)
+            sem_edits += 1
+
+            tree2, listeners2, parser2 = parse_source(working, f"{filename} (sym-fixed)")
+            if tree2 is None:
+                logger.end_case(
+                    status="STOPPED",
+                    final_source=working,
+                    applied_steps=applied_steps,
+                    note="tree None after sym fix",
+                )
+                return True
+
+            if has_any_errors(listeners2):
+                print("\nStopping: semantic fix broke parsing; refusing further edits.")
+                logger.log_parse_errors(stage="LEX/PARSE", errors=get_all_error_strings(listeners2))
+                logger.end_case(
+                    status="STOPPED",
+                    final_source=working,
+                    applied_steps=applied_steps,
+                    note="semantic fix broke parsing",
+                )
+                return True
+
+            tree, listeners, parser = tree2, listeners2, parser2
+            continue
+
+        # 3) Everything else: do NOT auto-fix
+        if _used_ai(applied_steps):
+            _print_ai_repair_debug(working, tree, parser)
+
+        print("\nPARSING SUCCESSFUL (but semantic issues remain)")
         print("-" * 70)
+        _print_semantic_issues(issues)
+        print("-" * 70)
+
+        logger.end_case(
+            status="SEM_ISSUES",
+            final_source=working,
+            applied_steps=applied_steps,
+            note=f"first issue kind={kind} not auto-fixable",
+        )
+        return True
+
+    checker = SemanticChecker()
+    checker.visit(tree)
+    issues = checker.get_issues()
+
+    if issues:
+        logger.log_semantic_issues(issues)
+
+        if _used_ai(applied_steps):
+            _print_ai_repair_debug(working, tree, parser)
+
+        print("\nPARSING SUCCESSFUL (but semantic issues remain)")
+        print("-" * 70)
+        _print_semantic_issues(issues)
+        print("-" * 70)
+        logger.end_case(
+            status="SEM_ISSUES",
+            final_source=working,
+            applied_steps=applied_steps,
+            note="issues remain after sem loop",
+        )
+        return True
+
+    if not run_security_checks(working):
+        logger.end_case(
+            status="BLOCKED_SECURITY",
+            final_source=working,
+            applied_steps=applied_steps,
+            note="blocked by security analysis",
+        )
+        return True
+
+    print("\nFINAL RESULT: SUCCESSFUL" + (" after repair" if applied_steps else ""))
+    print("-" * 70)
+    if applied_steps:
+        print("Applied steps:")
+        for s in applied_steps:
+            print(f"  - {s}")
+        print("-" * 70)
+
+    if _used_ai(applied_steps):
+        _print_ai_repair_debug(working, tree, parser)
+    else:
         print("Parse Tree:")
         print("-" * 70)
-        
         print_parse_tree(tree, parser)
-        
-        # Alternative: Print S-expression format (compact)
+
         print("\nS-Expression Format:")
         print(tree.toStringTree(recog=parser))
         print("-" * 70)
 
-        print_analysis(tree)
+    print_analysis(tree)
+
+    logger.end_case(
+        status="SUCCESS",
+        final_source=working,
+        applied_steps=applied_steps,
+        note="parse+sem clean",
+    )
+    return True
+
+
+def test_file(filename: str):
+    tree, listeners, parser, source_text = parse_file(filename)
+    if tree is None:
+        return
+
+    logger = RepairLogger()
+    case_id = str(uuid.uuid4())
+    logger.start_case(
+        case_id=case_id,
+        filename=filename,
+        original_source=source_text,
+        meta={"runner": "test_parser.py"},
+    )
+
+    MAX_LEX_EDITS = 3
+    MAX_SYN_EDITS = 5
+
+    working = source_text
+    applied_steps: List[str] = []
+
+    # ---------------------------------------------------------
+    # Phase 1: deterministic lexical cleanup loop
+    # ---------------------------------------------------------
+    for _ in range(MAX_LEX_EDITS):
+        new_src, lex_fix = fix_common_lexical_issues(working)
+        if lex_fix is None or new_src == working:
+            break
+
+        working = new_src
+        step_msg = f"LEX: {lex_fix}"
+        print("Applied lexical fix:", step_msg)
+        applied_steps.append(step_msg)
+        logger.log_lex_step(step=lex_fix, source_after=working)
+
+    tree, listeners, parser = parse_source(working, f"{filename} (after-lex)")
+    if tree is None:
+        logger.end_case(
+            status="STOPPED",
+            final_source=working,
+            applied_steps=applied_steps,
+            note="tree None after lex",
+        )
+        return
+
+    if has_any_errors(listeners):
+        logger.log_parse_errors(stage="LEX/PARSE", errors=get_all_error_strings(listeners))
+
+    # ---------------------------------------------------------
+    # Fast path: if parsing already succeeded, go straight to semantic phase
+    # ---------------------------------------------------------
+    if not has_any_errors(listeners):
+        _run_semantic_phase(filename, working, tree, listeners, parser, applied_steps, logger)
+        return
+
+    # ---------------------------------------------------------
+    # Phase 2: syntax repair loop
+    #   - if first error is lexer-stage: AI fallback
+    #   - if parser-stage: deterministic rule first, then AI fallback
+    # ---------------------------------------------------------
+    edits = 0
+    last_sig = None
+    repeat = 0
+    best_error_count = len(get_all_error_strings(listeners))
+    no_improve_rounds = 0
+
+    while has_any_errors(listeners) and edits < MAX_SYN_EDITS:
+        errs = get_all_error_strings(listeners)
+
+        print("\nPARSING FAILED - Errors Detected:")
+        print("-" * 70)
+        for e in errs:
+            print(f"  {e}")
+        print("-" * 70)
+
+        logger.log_parse_errors(stage="LEX/PARSE", errors=errs)
+
+        error_obj = get_first_error_object(listeners)
+        if not error_obj:
+            print("Stopping: error listener returned no error objects.")
+            logger.end_case(
+                status="STOPPED",
+                final_source=working,
+                applied_steps=applied_steps,
+                note="no error objects",
+            )
+            return
+
+        msg = error_obj["msg"]
+        line = error_obj["line"]
+        col = error_obj["column"]
+        stage = error_obj.get("stage", "?")
+        off = error_obj.get("offending")
+
+        classification = classify_error_message(msg)
+
+        print("\nError Classification:")
+        print(f"  Stage: {stage}")
+        print(f"  Fixable: {classification.fixable}")
+        print(f"  Category: {classification.category}")
+        print(f"  Reason: {classification.reason}")
+
+        sig = (stage, line, col, classification.reason, msg)
+        if sig == last_sig:
+            repeat += 1
+        else:
+            repeat = 0
+        last_sig = sig
+
+        if repeat >= 2:
+            print("\nStopping: repeating same error (stuck).")
+            logger.end_case(
+                status="STOPPED",
+                final_source=working,
+                applied_steps=applied_steps,
+                note="repeat same error",
+            )
+            return
+
+        symbols = build_symbols(tree)
+
+        # -----------------------------------------------------
+        # Optional identifier typo correction when offending token
+        # looks like an identifier. This can help both parse and sem.
+        # -----------------------------------------------------
+        if off and re.match(r"^[A-Za-z_][A-Za-z_0-9]*$", off):
+            corrected, msg2 = fix_identifier_typo_at(working, line, col, symbols, max_dist=2)
+            if msg2 is not None and corrected != working:
+                working = corrected
+                applied_steps.append(f"SYM: {msg2}")
+                logger.log_sem_step(step=msg2, source_after=working)
+                edits += 1
+
+                tree, listeners, parser = parse_source(working, f"{filename} (sym-fixed)")
+                if tree is None:
+                    logger.end_case(
+                        status="STOPPED",
+                        final_source=working,
+                        applied_steps=applied_steps,
+                        note="tree None after sym in parse-loop",
+                    )
+                    return
+
+                cur_error_count = len(get_all_error_strings(listeners))
+                if cur_error_count < best_error_count:
+                    best_error_count = cur_error_count
+                    no_improve_rounds = 0
+                else:
+                    no_improve_rounds += 1
+
+                if no_improve_rounds >= 2:
+                    print("\nStopping: not improving error count (stuck).")
+                    logger.end_case(
+                        status="STOPPED",
+                        final_source=working,
+                        applied_steps=applied_steps,
+                        note="no improvement rounds",
+                    )
+                    return
+
+                if not has_any_errors(listeners):
+                    _run_semantic_phase(filename, working, tree, listeners, parser, applied_steps, logger)
+                    return
+
+                continue
+
+        # -----------------------------------------------------
+        # Lexer-stage error -> AI fallback directly
+        # -----------------------------------------------------
+        if stage == "LEX":
+            print("\nLexer-stage error remains after lexical correction; invoking AI patch-based correction...")
+
+            candidates = ai_generate_patch_candidates(
+                working,
+                line,
+                col,
+                reason=classification.reason,
+                top_k=5,
+                debug=True,
+            )
+
+            ai_src, cmd, tree2, listeners2, parser2 = _select_best_ai_candidate_by_reparse(
+                filename,
+                working,
+                candidates,
+            )
+
+            if cmd is None or ai_src == working or tree2 is None:
+                print("AI: no valid patch produced")
+                logger.end_case(
+                    status="UNFIXABLE",
+                    final_source=working,
+                    applied_steps=applied_steps,
+                    note="AI produced no patch for lexer-stage error",
+                )
+                return
+
+            working = ai_src
+            applied_steps.append(f"AI: {cmd}")
+            logger.log_ai_step(cmd=cmd, source_after=working)
+            edits += 1
+
+            tree, listeners, parser = tree2, listeners2, parser2
+
+        else:
+            # -------------------------------------------------
+            # Parser-stage error -> deterministic first, then AI
+            # -------------------------------------------------
+            deterministic_attempted = False
+            deterministic_changed = False
+
+            if classification.reason in DETERMINISTIC_REASONS:
+                deterministic_attempted = True
+                corrected, applied = apply_correction(working, line, col, classification)
+
+                if applied is not None and corrected != working:
+                    deterministic_changed = True
+                    working = corrected
+                    applied_steps.append(f"RULE: {applied}")
+                    logger.log_rule_step(step=applied, source_after=working)
+                    edits += 1
+
+                    tree, listeners, parser = parse_source(working, f"{filename} (rule-fixed)")
+                    if tree is None:
+                        logger.end_case(
+                            status="STOPPED",
+                            final_source=working,
+                            applied_steps=applied_steps,
+                            note="tree None after rule fix",
+                        )
+                        return
+                else:
+                    print("\nDeterministic fix made no change; allowing AI fallback.")
+
+            if has_any_errors(listeners):
+                if classification.reason not in DETERMINISTIC_REASONS or (
+                    deterministic_attempted and not deterministic_changed
+                ):
+                    print("\nInvoking AI patch-based correction...")
+
+                    candidates = ai_generate_patch_candidates(
+                        working,
+                        line,
+                        col,
+                        reason=classification.reason,
+                        top_k=5,
+                        debug=True,
+                    )
+
+                    ai_src, cmd, tree2, listeners2, parser2 = _select_best_ai_candidate_by_reparse(
+                        filename,
+                        working,
+                        candidates,
+                    )
+
+                    if cmd is None or ai_src == working or tree2 is None:
+                        print("AI: no valid patch produced")
+                        logger.end_case(
+                            status="UNFIXABLE",
+                            final_source=working,
+                            applied_steps=applied_steps,
+                            note="AI produced no patch",
+                        )
+                        return
+
+                    working = ai_src
+                    applied_steps.append(f"AI: {cmd}")
+                    logger.log_ai_step(cmd=cmd, source_after=working)
+                    edits += 1
+
+                    tree, listeners, parser = tree2, listeners2, parser2
+
+        cur_error_count = len(get_all_error_strings(listeners))
+        if cur_error_count < best_error_count:
+            best_error_count = cur_error_count
+            no_improve_rounds = 0
+        else:
+            no_improve_rounds += 1
+
+        if no_improve_rounds >= 2:
+            print("\nStopping: not improving error count (stuck).")
+            logger.end_case(
+                status="STOPPED",
+                final_source=working,
+                applied_steps=applied_steps,
+                note="no improvement rounds",
+            )
+            return
+
+        if not has_any_errors(listeners):
+            _run_semantic_phase(filename, working, tree, listeners, parser, applied_steps, logger)
+            return
+
+    if has_any_errors(listeners):
+        print("\nFINAL RESULT: UNFIXABLE within limits")
+        print("-" * 70)
+        print("Applied steps:")
+        for s in applied_steps:
+            print(f"  - {s}")
+
+        logger.end_case(
+            status="UNFIXABLE",
+            final_source=working,
+            applied_steps=applied_steps,
+            note="still has parse/lex errors",
+        )
+        return
+
+    _run_semantic_phase(filename, working, tree, listeners, parser, applied_steps, logger)
 
 
 def main():
-    """
-    Main function: test all C files.
-    """
-    print("\n" + "="*70)
+    parser = argparse.ArgumentParser(description="Simple C Parser - Test Suite")
+    parser.add_argument(
+        "--file",
+        type=str,
+        default=None,
+        help="Run a single file (e.g. examples/invalid_example1.c). If omitted, runs suite.",
+    )
+    args = parser.parse_args()
+
+    print("\n" + "=" * 70)
     print(" Simple C Parser - Test Suite")
-    print("="*70)
-    
-    # List of test files to parse
-    test_files = [
-        'valid_example.c',
-        'invalid_example1.c',
-        'invalid_example2.c',
-        'invalid_example3.c'
-    ]
-    
-    # Parse each file and display results
-    for filename in test_files:
-        test_file(filename)
-    
-    print("\n" + "="*70)
+    print("=" * 70)
+
+    if args.file:
+        test_file(args.file)
+    else:
+        test_files = [
+            "examples/block_scope.c",
+            "examples/break_outside.c",
+            "examples/call_check.c",
+            "examples/for_decl_scope.c",
+            "examples/missing_rbrace.c",
+            "examples/missing_semi.c",
+            "examples/param_scope.c",
+            "examples/post_inc.c",
+            "examples/redeclared.c",
+        ]
+        for filename in test_files:
+            test_file(filename)
+
+    print("\n" + "=" * 70)
     print(" Test Suite Complete")
-    print("="*70 + "\n")
+    print("=" * 70 + "\n")
 
 
 if __name__ == "__main__":
