@@ -30,6 +30,7 @@ DANGEROUS_SINKS = [
 class TaintIssue:
     severity: str
     message: str
+    suggestion: str
     score: int
 
 
@@ -71,7 +72,6 @@ class TaintChecker:
             tainted_vars.add("argv")
 
         # Simple assignment propagation: a = b;
-        # Repeat a couple of times for shallow propagation.
         for _ in range(2):
             assign_matches = re.findall(
                 r"\b([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*(?:\[[^\]]+\])?)\s*;",
@@ -97,6 +97,7 @@ class TaintChecker:
                         TaintIssue(
                             severity="CRITICAL",
                             message=f"Tainted input '{var}' passed to dangerous sink '{sink}'",
+                            suggestion="Sanitize or validate the input before use, or avoid passing external input to command-execution APIs.",
                             score=5,
                         )
                     )
@@ -108,6 +109,7 @@ class TaintChecker:
                     TaintIssue(
                         severity="CRITICAL",
                         message=f"Command-line argument passed directly to dangerous sink '{sink}'",
+                        suggestion="Copy argv input into a validated buffer and strictly sanitize it before command execution.",
                         score=5,
                     )
                 )
@@ -119,6 +121,7 @@ class TaintChecker:
                     TaintIssue(
                         severity="CRITICAL",
                         message=f"Environment-derived value passed directly to dangerous sink '{sink}'",
+                        suggestion="Do not directly execute environment-derived content; validate against an allowlist first.",
                         score=5,
                     )
                 )

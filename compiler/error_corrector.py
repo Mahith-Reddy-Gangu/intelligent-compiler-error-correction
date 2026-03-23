@@ -14,6 +14,11 @@ def apply_correction(
     Deterministic correction dispatcher.
     Returns: (new_source, applied_fix_message_or_None)
     """
+
+    new_src, msg = repair_missing_rhs(source_text, error_line)
+
+    if msg:
+        return new_src, msg
     if not classification.fixable:
         return source_text, None
 
@@ -26,16 +31,12 @@ def apply_correction(
         return _append_missing_rbrace(source_text)
 
     if reason == "missing_lbrace":
-        # best-effort: insert "{" after a function header line if it looks like one
         return _insert_missing_lbrace(source_text, error_line)
 
     if reason == "missing_lparen":
-    # First try main() special-case: "main {" -> "main() {"
         new_src, msg = _fix_main_parentheses(source_text)
         if msg:
             return new_src, msg
-
-    # Then try control headers like if/while/for
         return _insert_missing_lparen(source_text, error_line)
 
     if reason == "missing_rparen":
@@ -44,9 +45,19 @@ def apply_correction(
     if reason == "extraneous_token":
         return _delete_extraneous_token_at(source_text, error_line, error_column)
 
-    # Legacy reason you had earlier (keep if classifier still emits it in some cases)
     if reason == "main_lparen_expected":
         return _fix_main_parentheses(source_text)
+    
+    if reason == "missing_rhs":
+        return _repair_missing_rhs(source_text, error_line)
+
+    # New deterministic rescue for incomplete declarations like:
+    #   int
+    #   return 0;
+    if reason == "mismatched_token":
+        new_src, msg = _remove_dangling_type_line(source_text, error_line)
+        if msg:
+            return new_src, msg
 
     return source_text, None
 
@@ -67,25 +78,10 @@ def _strip_line_comment(s: str) -> str:
 
 
 def _line_ends_like_complete_statement(code_part: str) -> bool:
-    # Things that usually should NOT get an extra semicolon added
     return code_part.rstrip().endswith((";", "{", "}", ":", ","))
 
 
 def _insert_semicolon_near_line(source_text: str, error_line: int) -> Tuple[str, Optional[str]]:
-    """
-    Try to insert a semicolon on the most likely statement line.
-
-    Key ANTLR behavior:
-    - For a missing ';' after a declaration like "int x", ANTLR often reports the error
-      at the NEXT token (e.g. the start of the next statement "x = 10;").
-    So if the reported line already looks "complete" (ends with ';'), we should try the previous code line.
-
-    Strategy:
-    - Start from reported line.
-    - If reported line is a block header/control header -> previous code line.
-    - If reported line already ends with ';' (or other "complete" endings) -> previous code line.
-    - Never touch preprocessor lines.
-    """
     lines = source_text.splitlines(keepends=True)
     idx = error_line - 1
     if idx < 0 or idx >= len(lines):
@@ -98,7 +94,7 @@ def _insert_semicolon_near_line(source_text: str, error_line: int) -> Tuple[str,
             if not s:
                 j -= 1
                 continue
-            if s.startswith("#"):  # preprocessor
+            if s.startswith("#"):
                 j -= 1
                 continue
             return j
@@ -110,14 +106,12 @@ def _insert_semicolon_near_line(source_text: str, error_line: int) -> Tuple[str,
     cur_no_nl = cur.rstrip("\r\n")
     cur_code = _strip_line_comment(cur_no_nl)
 
-    # Case 1: current line is a block header or control header
     if cur_code.endswith("{") or _looks_like_control_header(cur_code):
         p = prev_code_line(target - 1)
         if p is not None:
             target = p
             return _insert_semicolon_at_line_index(lines, target)
 
-    # Case 2: current line already looks complete (common when missing ';' is on PREVIOUS line)
     if _line_ends_like_complete_statement(cur_code):
         p = prev_code_line(target - 1)
         if p is not None:
@@ -149,11 +143,9 @@ def _insert_semicolon_at_line_index(lines: List[str], idx: int) -> Tuple[str, Op
 
     code_part = _strip_line_comment(no_nl)
 
-    # Already ends with ; or { or } or : or , -> don't add
     if _line_ends_like_complete_statement(code_part):
         return "".join(lines), None
 
-    # Avoid adding after control headers: if(...), while(...), for(...)
     if _looks_like_control_header(code_part):
         return "".join(lines), None
 
@@ -178,11 +170,6 @@ def _append_missing_rbrace(source_text: str) -> Tuple[str, Optional[str]]:
 
 
 def _insert_missing_lbrace(source_text: str, error_line: int) -> Tuple[str, Optional[str]]:
-    """
-    Best-effort:
-    - If the error is around a function header line like: int main()
-      and next line isn't '{', insert '{' after that header line.
-    """
     lines = source_text.splitlines(keepends=True)
     idx = max(0, min(len(lines) - 1, error_line - 1))
 
@@ -219,14 +206,9 @@ def _insert_missing_lbrace(source_text: str, error_line: int) -> Tuple[str, Opti
 
 
 # -----------------------------
-# Parenthesis fixes (very conservative)
+# Parenthesis fixes
 # -----------------------------
 def _insert_missing_lparen(source_text: str, error_line: int) -> Tuple[str, Optional[str]]:
-    """
-    Conservative: fix patterns like
-      if x)   -> if (x)
-      while x) -> while (x)
-    """
     lines = source_text.splitlines(keepends=True)
     idx = error_line - 1
     if idx < 0 or idx >= len(lines):
@@ -247,10 +229,6 @@ def _insert_missing_lparen(source_text: str, error_line: int) -> Tuple[str, Opti
 
 
 def _insert_missing_rparen(source_text: str, error_line: int) -> Tuple[str, Optional[str]]:
-    """
-    Conservative: fix control headers missing closing ')', e.g.
-      if (x {  -> if (x) {
-    """
     lines = source_text.splitlines(keepends=True)
     idx = error_line - 1
     if idx < 0 or idx >= len(lines):
@@ -272,10 +250,6 @@ def _insert_missing_rparen(source_text: str, error_line: int) -> Tuple[str, Opti
 # Extraneous token deletion
 # -----------------------------
 def _delete_extraneous_token_at(source_text: str, error_line: int, error_column: int) -> Tuple[str, Optional[str]]:
-    """
-    Delete a single character at the reported location (best-effort),
-    but only if it looks like a common nuisance: extra ';' or ',' or ')'.
-    """
     lines = source_text.splitlines(keepends=True)
     idx = error_line - 1
     if idx < 0 or idx >= len(lines):
@@ -312,3 +286,119 @@ def _fix_main_parentheses(source_text: str) -> Tuple[str, Optional[str]]:
         return source_text, None
     updated = pattern.sub("main() {", source_text, count=1)
     return updated, "replaced '{' with '() {' after main"
+
+
+# -----------------------------
+# New: dangling type-line removal
+# -----------------------------
+def _remove_dangling_type_line(source_text: str, error_line: int) -> Tuple[str, Optional[str]]:
+    """
+    Remove an incomplete declaration line containing only a type keyword, e.g.
+
+        int
+        return 0;
+
+    This is conservative:
+    - only removes a line that is exactly one type keyword
+    - only when the next non-empty line starts with something statement-like
+    """
+    lines = source_text.splitlines(keepends=True)
+
+    type_only_re = re.compile(r"^\s*(int|float|char|double|void)\s*(//.*)?$")
+    next_stmt_re = re.compile(
+        r"^\s*(return|if|while|for|break|continue|\{|\}|[A-Za-z_])\b"
+    )
+
+    # First try the line just before the reported error
+    candidates = [error_line - 2, error_line - 1]
+
+    for idx in candidates:
+        if idx < 0 or idx >= len(lines):
+            continue
+
+        cur = lines[idx].rstrip("\r\n")
+        if not type_only_re.match(cur):
+            continue
+
+        j = idx + 1
+        while j < len(lines) and not lines[j].strip():
+            j += 1
+
+        if j >= len(lines):
+            continue
+
+        nxt = lines[j].rstrip("\r\n")
+        if not next_stmt_re.match(nxt):
+            continue
+
+        new_lines = lines[:idx] + lines[idx + 1:]
+        return "".join(new_lines), "removed dangling incomplete declaration"
+
+    return source_text, None
+
+def _repair_missing_rhs(source_text: str, error_line: int) -> Tuple[str, Optional[str]]:
+    """
+    Repair patterns like:
+        x = ;
+        int x = ;
+    Conservative strategy:
+    - If line looks like a declaration assignment, use 0 as initializer
+    - If line looks like a normal assignment, use 0 as RHS
+    """
+    lines = source_text.splitlines(keepends=True)
+    idx = error_line - 1
+    if idx < 0 or idx >= len(lines):
+        return source_text, None
+
+    line = lines[idx]
+    line_no_nl = line.rstrip("\r\n")
+    nl = line[len(line_no_nl):]
+
+    # declaration with missing initializer
+    decl_pat = re.compile(r"^(\s*(?:int|float|char|double)\s+[A-Za-z_]\w*\s*=\s*);(\s*(?://.*)?)$")
+    m = decl_pat.match(line_no_nl)
+    if m:
+        updated = m.group(1) + "0;" + m.group(2)
+        lines[idx] = updated + nl
+        return "".join(lines), "inserted default initializer '0' for missing RHS"
+
+    # generic assignment with missing RHS
+    assign_pat = re.compile(r"^(\s*[A-Za-z_]\w*\s*=\s*);(\s*(?://.*)?)$")
+    m = assign_pat.match(line_no_nl)
+    if m:
+        updated = m.group(1) + "0;" + m.group(2)
+        lines[idx] = updated + nl
+        return "".join(lines), "inserted default RHS '0'"
+
+    return source_text, None
+def repair_missing_rhs(source: str, error_line: int) -> Tuple[str, Optional[str]]:
+    """
+    Fix patterns like:
+        int x=;
+        x=;
+    """
+
+    lines = source.splitlines(keepends=True)
+
+    idx = error_line - 1
+    if idx < 0 or idx >= len(lines):
+        return source, None
+
+    line = lines[idx]
+    stripped = line.strip()
+
+    # declaration initializer missing RHS
+    m = re.match(r"(int|float|char|double)\s+[A-Za-z_]\w*\s*=\s*;", stripped)
+    if m:
+        fixed = stripped.replace("=;", "=0;")
+        lines[idx] = line.replace(stripped, fixed)
+        return "".join(lines), "inserted default initializer 0"
+
+    # simple assignment missing RHS
+    m = re.match(r"[A-Za-z_]\w*\s*=\s*;", stripped)
+    if m:
+        fixed = stripped.replace("=;", "=0;")
+        lines[idx] = line.replace(stripped, fixed)
+        return "".join(lines), "inserted default RHS 0"
+
+    return source, None

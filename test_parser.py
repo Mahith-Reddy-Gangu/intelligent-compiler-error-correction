@@ -17,10 +17,8 @@ from compiler.identifier_corrector import fix_identifier_typo_at
 from compiler.semantic_checker import SemanticChecker
 from compiler.unused_var_fixer import remove_unused_decl_at
 from compiler.repair_logger import RepairLogger
-from compiler.security_checker import SecurityChecker
-from compiler.taint_checker import TaintChecker
-from compiler.string_flow_checker import StringFlowChecker
 from compiler.symbol_table_builder import SymbolTableBuilder
+from compiler.security_engine import SecurityEngine
 
 try:
     from generated.SimpleCLexer import SimpleCLexer
@@ -35,8 +33,13 @@ DETERMINISTIC_REASONS = {
     "missing_semicolon",
     "missing_rbrace",
     "missing_lbrace",
+    "missing_lparen",
+    "missing_rparen",
     "main_lparen_expected",
+    "mismatched_token",
+    "missing_rhs",
 }
+
 
 class CollectingErrorListener(ErrorListener):
     """
@@ -147,7 +150,6 @@ def get_first_error_object(listeners: Dict[str, CollectingErrorListener]) -> Opt
     if listeners["lex"].has_errors():
         lex_errs = listeners["lex"].get_error_objects()
 
-        # If lexer itself has multiple errors, prefer the first non-start junk one
         for e in lex_errs:
             line = e.get("line")
             col = e.get("column")
@@ -204,7 +206,6 @@ def get_first_error_object(listeners: Dict[str, CollectingErrorListener]) -> Opt
             )
         )
 
-    # If there is any later parse error, skip bogus start-of-file junk
     for e in errs:
         if not is_bogus_start_error(e):
             return e
@@ -326,38 +327,24 @@ def _print_semantic_issues(issues):
 
 
 def run_security_checks(source_text: str) -> bool:
-    security_checker = SecurityChecker()
-    taint_checker = TaintChecker()
-    string_checker = StringFlowChecker()
+    engine = SecurityEngine()
 
-    issues = []
-    issues.extend(security_checker.check(source_text))
-    issues.extend(taint_checker.check(source_text))
-    issues.extend(string_checker.check(source_text))
+    issues, blocked, categorized = engine.analyze(source_text)
 
     if not issues:
+        print("\nSECURITY ANALYSIS")
+        print("------------------------------------------------")
+        print("No security issues detected.")
         return True
 
-    print("\nSECURITY ANALYSIS RESULTS")
-    print("-" * 70)
+    engine.print_summary(categorized)
 
-    total_score = 0
-    block = False
-
-    for issue in issues:
-        score = getattr(issue, "score", 0)
-        total_score += score
-        print(f"[{issue.severity}] {issue.message} (score={score})")
-
-        if issue.severity == "CRITICAL":
-            block = True
-
-    print(f"Total security score: {total_score}")
-
-    if block or total_score >= 6:
-        print("\nFINAL RESULT: BLOCKED BY SECURITY CHECK")
+    if blocked:
+        print("FINAL RESULT: BLOCKED BY SECURITY POLICY")
+        print("Dangerous or exploitable code detected.")
         return False
 
+    print("Security result: warnings present but allowed.")
     return True
 
 
@@ -378,6 +365,7 @@ def _print_ai_repair_debug(working: str, tree, parser):
     print("\nS-Expression After AI Repair:")
     print(tree.toStringTree(recog=parser))
     print("-" * 70)
+
 
 def _select_best_ai_candidate_by_reparse(
     filename: str,
@@ -408,7 +396,13 @@ def _select_best_ai_candidate_by_reparse(
     print("-" * 70)
 
     for idx, (cand_src, cmd, heuristic_score) in enumerate(candidates, 1):
+        # Guardrail: do not let AI remove pointer syntax from the source
+        if "*" in current_source and "*" not in cand_src:
+            print(f"[{idx}] {cmd} -> rejected (removed pointer syntax)")
+            continue
+
         tree_c, listeners_c, parser_c = parse_source(cand_src, f"{filename} (ai-candidate-{idx})")
+
         if tree_c is None:
             print(f"[{idx}] {cmd} -> rejected (tree is None)")
             continue
@@ -417,8 +411,6 @@ def _select_best_ai_candidate_by_reparse(
         success = not has_any_errors(listeners_c)
         delta = abs(len(cand_src) - len(current_source))
 
-        # Sort key: larger is better
-        # success first, then fewer errors, then higher heuristic score, then smaller delta
         key = (
             1 if success else 0,
             -err_count,
@@ -439,6 +431,42 @@ def _select_best_ai_candidate_by_reparse(
         return current_source, None, None, None, None
 
     return best
+
+
+def _finalize_semantic_with_security(
+    working: str,
+    tree,
+    parser,
+    issues,
+    applied_steps: List[str],
+    logger: RepairLogger,
+    note: str,
+) -> bool:
+    if _used_ai(applied_steps):
+        _print_ai_repair_debug(working, tree, parser)
+
+    print("\nPARSING SUCCESSFUL (but semantic issues remain)")
+    print("-" * 70)
+    _print_semantic_issues(issues)
+    print("-" * 70)
+
+    if not run_security_checks(working):
+        logger.end_case(
+            status="BLOCKED_SECURITY",
+            final_source=working,
+            applied_steps=applied_steps,
+            note=f"blocked by security analysis ({note})",
+        )
+        return True
+
+    logger.end_case(
+        status="SEM_ISSUES",
+        final_source=working,
+        applied_steps=applied_steps,
+        note=f"{note}, security checked",
+    )
+    return True
+
 
 def _run_semantic_phase(
     filename: str,
@@ -493,20 +521,15 @@ def _run_semantic_phase(
                 corrected, msg = None, None
 
             if msg is None or corrected is None or corrected == working:
-                if _used_ai(applied_steps):
-                    _print_ai_repair_debug(working, tree, parser)
-
-                print("\nPARSING SUCCESSFUL (but semantic issues remain)")
-                print("-" * 70)
-                _print_semantic_issues(issues)
-                print("-" * 70)
-                logger.end_case(
-                    status="SEM_ISSUES",
-                    final_source=working,
+                return _finalize_semantic_with_security(
+                    working=working,
+                    tree=tree,
+                    parser=parser,
+                    issues=issues,
                     applied_steps=applied_steps,
+                    logger=logger,
                     note="unused fix not applicable",
                 )
-                return True
 
             working = corrected
             applied_steps.append(f"SEM: {msg}")
@@ -571,20 +594,15 @@ def _run_semantic_phase(
                     pass
 
             if msg is None or corrected == working:
-                if _used_ai(applied_steps):
-                    _print_ai_repair_debug(working, tree, parser)
-
-                print("\nPARSING SUCCESSFUL (but semantic issues remain)")
-                print("-" * 70)
-                _print_semantic_issues(issues)
-                print("-" * 70)
-                logger.end_case(
-                    status="SEM_ISSUES",
-                    final_source=working,
+                return _finalize_semantic_with_security(
+                    working=working,
+                    tree=tree,
+                    parser=parser,
+                    issues=issues,
                     applied_steps=applied_steps,
+                    logger=logger,
                     note="undeclared fix not applicable",
                 )
-                return True
 
             working = corrected
             applied_steps.append(f"SYM: {msg}")
@@ -616,21 +634,15 @@ def _run_semantic_phase(
             continue
 
         # 3) Everything else: do NOT auto-fix
-        if _used_ai(applied_steps):
-            _print_ai_repair_debug(working, tree, parser)
-
-        print("\nPARSING SUCCESSFUL (but semantic issues remain)")
-        print("-" * 70)
-        _print_semantic_issues(issues)
-        print("-" * 70)
-
-        logger.end_case(
-            status="SEM_ISSUES",
-            final_source=working,
+        return _finalize_semantic_with_security(
+            working=working,
+            tree=tree,
+            parser=parser,
+            issues=issues,
             applied_steps=applied_steps,
+            logger=logger,
             note=f"first issue kind={kind} not auto-fixable",
         )
-        return True
 
     checker = SemanticChecker()
     checker.visit(tree)
@@ -638,21 +650,15 @@ def _run_semantic_phase(
 
     if issues:
         logger.log_semantic_issues(issues)
-
-        if _used_ai(applied_steps):
-            _print_ai_repair_debug(working, tree, parser)
-
-        print("\nPARSING SUCCESSFUL (but semantic issues remain)")
-        print("-" * 70)
-        _print_semantic_issues(issues)
-        print("-" * 70)
-        logger.end_case(
-            status="SEM_ISSUES",
-            final_source=working,
+        return _finalize_semantic_with_security(
+            working=working,
+            tree=tree,
+            parser=parser,
+            issues=issues,
             applied_steps=applied_steps,
+            logger=logger,
             note="issues remain after sem loop",
         )
-        return True
 
     if not run_security_checks(working):
         logger.end_case(

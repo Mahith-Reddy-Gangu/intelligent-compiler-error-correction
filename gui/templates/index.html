@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hybrid AI-Assisted Compiler IDE</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+</head>
+<body>
+    <div class="topbar">
+        <div class="titleblock">
+            <h2>Hybrid AI-Assisted Compiler IDE</h2>
+            <div class="subtitle">Mini IDE for your compiler repair backend</div>
+        </div>
+
+        <div class="controls">
+            <button onclick="runRepair()">Run Code</button>
+            <button onclick="loadExample()">Load Example</button>
+            <button onclick="newFile()">New File</button>
+        </div>
+    </div>
+
+    <div class="mainlayout">
+        <div class="editorpanel">
+            <div class="filebar">
+                <div class="filetab active" id="active-file-label">main.c</div>
+            </div>
+            <div id="editor"></div>
+        </div>
+
+        <div class="sidepanel">
+            <section class="panelcard">
+                <h3>Status</h3>
+                <div id="status">Idle</div>
+            </section>
+
+            <section class="panelcard">
+                <h3>Stats</h3>
+                <div id="stats"></div>
+            </section>
+
+            <section class="panelcard">
+                <h3>Repair Steps</h3>
+                <ul id="steps"></ul>
+            </section>
+
+            <section class="panelcard">
+                <h3>Errors</h3>
+                <ul id="errors"></ul>
+            </section>
+
+            <section class="panelcard">
+                <h3>Semantic Issues</h3>
+                <ul id="semantic"></ul>
+            </section>
+
+            <section class="panelcard">
+                <h3>Security Warnings</h3>
+                <ul id="security"></ul>
+            </section>
+
+            <section class="panelcard">
+                <h3>Logs</h3>
+                <ul id="logs"></ul>
+            </section>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

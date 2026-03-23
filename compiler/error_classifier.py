@@ -18,11 +18,25 @@ def classify_error_message(msg: str) -> ErrorClassification:
     - True means the pipeline should attempt repair
       (deterministic and/or AI).
     - False means very low-confidence / unknown case.
-
-    This works better with the hybrid pipeline:
-      lexical cleanup -> deterministic syntax fix -> AI fallback.
     """
     lower = (msg or "").lower().strip()
+
+    # ---------------------------------------------------------
+    # Missing RHS / missing operand after assignment
+    # Example symptom:
+    #   mismatched input ';' expecting IDENTIFIER / INTEGER / ...
+    # ---------------------------------------------------------
+    if (
+        "mismatched input ';' expecting" in lower
+        and (
+            "identifier" in lower
+            or "integer" in lower
+            or "float_literal" in lower
+            or "char_literal" in lower
+            or "string_literal" in lower
+        )
+    ):
+        return ErrorClassification(True, "MISSING_OPERAND", "missing_rhs")
 
     # ---------------------------------------------------------
     # Missing tokens (good deterministic candidates)
@@ -42,7 +56,6 @@ def classify_error_message(msg: str) -> ErrorClassification:
     if re.search(r"missing\s+'\('", lower) or re.search(r"expecting\s+'\('", lower):
         return ErrorClassification(True, "MISSING_TOKEN", "missing_lparen")
 
-    # Special legacy/main-header style message support
     if "expecting '('" in lower and "main" in lower:
         return ErrorClassification(True, "MISSING_TOKEN", "main_lparen_expected")
 
@@ -54,14 +67,12 @@ def classify_error_message(msg: str) -> ErrorClassification:
 
     # ---------------------------------------------------------
     # Lexer-level illegal token
-    # Let AI attempt these after lexical cleanup fails.
     # ---------------------------------------------------------
     if "token recognition error" in lower:
         return ErrorClassification(True, "ILLEGAL_TOKEN", "illegal_token")
 
     # ---------------------------------------------------------
     # Broader structural parse failures
-    # Deterministic rules may not help, but AI should still try.
     # ---------------------------------------------------------
     if "no viable alternative" in lower:
         return ErrorClassification(True, "STRUCTURAL_ERROR", "no_viable_alternative")
@@ -69,8 +80,6 @@ def classify_error_message(msg: str) -> ErrorClassification:
     if "mismatched input" in lower:
         return ErrorClassification(True, "MISMATCHED_TOKEN", "mismatched_token")
 
-    # Some ANTLR variants use phrasing like:
-    # "input mismatch" / "failed predicate" / etc.
     if "input mismatch" in lower:
         return ErrorClassification(True, "MISMATCHED_TOKEN", "mismatched_token")
 
@@ -80,7 +89,4 @@ def classify_error_message(msg: str) -> ErrorClassification:
     if "unexpected token" in lower:
         return ErrorClassification(True, "STRUCTURAL_ERROR", "unexpected_token")
 
-    # ---------------------------------------------------------
-    # Fallback unknown
-    # ---------------------------------------------------------
     return ErrorClassification(False, "STRUCTURAL_ERROR", "unknown")

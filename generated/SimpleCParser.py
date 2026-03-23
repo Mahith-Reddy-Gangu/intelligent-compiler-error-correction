@@ -10,7 +10,7 @@ else:
 
 def serializedATN():
     return [
-        4,1,51,331,2,0,7,0,2,1,7,1,2,2,7,2,2,3,7,3,2,4,7,4,2,5,7,5,2,6,7,
+        4,1,53,332,2,0,7,0,2,1,7,1,2,2,7,2,2,3,7,3,2,4,7,4,2,5,7,5,2,6,7,
         6,2,7,7,7,2,8,7,8,2,9,7,9,2,10,7,10,2,11,7,11,2,12,7,12,2,13,7,13,
         2,14,7,14,2,15,7,15,2,16,7,16,2,17,7,17,2,18,7,18,2,19,7,19,2,20,
         7,20,2,21,7,21,2,22,7,22,2,23,7,23,2,24,7,24,2,25,7,25,2,26,7,26,
@@ -37,65 +37,65 @@ def serializedATN():
         8,31,1,32,1,32,5,32,293,8,32,10,32,12,32,296,9,32,1,33,1,33,1,33,
         1,33,1,33,1,33,3,33,304,8,33,1,33,1,33,1,33,3,33,309,8,33,1,34,1,
         34,1,34,5,34,314,8,34,10,34,12,34,317,9,34,1,35,1,35,1,35,1,35,1,
-        35,1,35,1,35,1,35,3,35,327,8,35,1,36,1,36,1,36,0,0,37,0,2,4,6,8,
-        10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,
-        54,56,58,60,62,64,66,68,70,72,0,7,2,0,14,18,33,33,1,0,19,20,2,0,
-        21,22,30,31,1,0,25,26,1,0,27,29,3,0,12,13,25,26,32,32,1,0,1,4,339,
-        0,75,1,0,0,0,2,81,1,0,0,0,4,90,1,0,0,0,6,98,1,0,0,0,8,103,1,0,0,
-        0,10,114,1,0,0,0,12,116,1,0,0,0,14,119,1,0,0,0,16,122,1,0,0,0,18,
-        130,1,0,0,0,20,143,1,0,0,0,22,156,1,0,0,0,24,158,1,0,0,0,26,161,
-        1,0,0,0,28,165,1,0,0,0,30,174,1,0,0,0,32,180,1,0,0,0,34,198,1,0,
-        0,0,36,200,1,0,0,0,38,206,1,0,0,0,40,209,1,0,0,0,42,212,1,0,0,0,
-        44,225,1,0,0,0,46,227,1,0,0,0,48,229,1,0,0,0,50,237,1,0,0,0,52,245,
-        1,0,0,0,54,253,1,0,0,0,56,261,1,0,0,0,58,269,1,0,0,0,60,277,1,0,
-        0,0,62,288,1,0,0,0,64,290,1,0,0,0,66,308,1,0,0,0,68,310,1,0,0,0,
-        70,326,1,0,0,0,72,328,1,0,0,0,74,76,3,2,1,0,75,74,1,0,0,0,76,77,
-        1,0,0,0,77,75,1,0,0,0,77,78,1,0,0,0,78,79,1,0,0,0,79,80,5,0,0,1,
-        80,1,1,0,0,0,81,82,3,72,36,0,82,83,5,44,0,0,83,85,5,38,0,0,84,86,
-        3,4,2,0,85,84,1,0,0,0,85,86,1,0,0,0,86,87,1,0,0,0,87,88,5,39,0,0,
-        88,89,3,8,4,0,89,3,1,0,0,0,90,95,3,6,3,0,91,92,5,36,0,0,92,94,3,
-        6,3,0,93,91,1,0,0,0,94,97,1,0,0,0,95,93,1,0,0,0,95,96,1,0,0,0,96,
-        5,1,0,0,0,97,95,1,0,0,0,98,99,3,72,36,0,99,101,5,44,0,0,100,102,
+        35,1,35,1,35,1,35,1,35,3,35,328,8,35,1,36,1,36,1,36,0,0,37,0,2,4,
+        6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,
+        50,52,54,56,58,60,62,64,66,68,70,72,0,7,2,0,14,18,34,34,1,0,19,20,
+        2,0,21,22,31,32,1,0,26,27,1,0,28,30,3,0,12,13,25,27,33,33,1,0,1,
+        4,341,0,75,1,0,0,0,2,81,1,0,0,0,4,90,1,0,0,0,6,98,1,0,0,0,8,103,
+        1,0,0,0,10,114,1,0,0,0,12,116,1,0,0,0,14,119,1,0,0,0,16,122,1,0,
+        0,0,18,130,1,0,0,0,20,143,1,0,0,0,22,156,1,0,0,0,24,158,1,0,0,0,
+        26,161,1,0,0,0,28,165,1,0,0,0,30,174,1,0,0,0,32,180,1,0,0,0,34,198,
+        1,0,0,0,36,200,1,0,0,0,38,206,1,0,0,0,40,209,1,0,0,0,42,212,1,0,
+        0,0,44,225,1,0,0,0,46,227,1,0,0,0,48,229,1,0,0,0,50,237,1,0,0,0,
+        52,245,1,0,0,0,54,253,1,0,0,0,56,261,1,0,0,0,58,269,1,0,0,0,60,277,
+        1,0,0,0,62,288,1,0,0,0,64,290,1,0,0,0,66,308,1,0,0,0,68,310,1,0,
+        0,0,70,327,1,0,0,0,72,329,1,0,0,0,74,76,3,2,1,0,75,74,1,0,0,0,76,
+        77,1,0,0,0,77,75,1,0,0,0,77,78,1,0,0,0,78,79,1,0,0,0,79,80,5,0,0,
+        1,80,1,1,0,0,0,81,82,3,72,36,0,82,83,5,45,0,0,83,85,5,39,0,0,84,
+        86,3,4,2,0,85,84,1,0,0,0,85,86,1,0,0,0,86,87,1,0,0,0,87,88,5,40,
+        0,0,88,89,3,8,4,0,89,3,1,0,0,0,90,95,3,6,3,0,91,92,5,37,0,0,92,94,
+        3,6,3,0,93,91,1,0,0,0,94,97,1,0,0,0,95,93,1,0,0,0,95,96,1,0,0,0,
+        96,5,1,0,0,0,97,95,1,0,0,0,98,99,3,72,36,0,99,101,5,45,0,0,100,102,
         3,20,10,0,101,100,1,0,0,0,101,102,1,0,0,0,102,7,1,0,0,0,103,107,
-        5,40,0,0,104,106,3,10,5,0,105,104,1,0,0,0,106,109,1,0,0,0,107,105,
+        5,41,0,0,104,106,3,10,5,0,105,104,1,0,0,0,106,109,1,0,0,0,107,105,
         1,0,0,0,107,108,1,0,0,0,108,110,1,0,0,0,109,107,1,0,0,0,110,111,
-        5,41,0,0,111,9,1,0,0,0,112,115,3,12,6,0,113,115,3,22,11,0,114,112,
+        5,42,0,0,111,9,1,0,0,0,112,115,3,12,6,0,113,115,3,22,11,0,114,112,
         1,0,0,0,114,113,1,0,0,0,115,11,1,0,0,0,116,117,3,14,7,0,117,118,
-        5,37,0,0,118,13,1,0,0,0,119,120,3,72,36,0,120,121,3,16,8,0,121,15,
-        1,0,0,0,122,127,3,18,9,0,123,124,5,36,0,0,124,126,3,18,9,0,125,123,
+        5,38,0,0,118,13,1,0,0,0,119,120,3,72,36,0,120,121,3,16,8,0,121,15,
+        1,0,0,0,122,127,3,18,9,0,123,124,5,37,0,0,124,126,3,18,9,0,125,123,
         1,0,0,0,126,129,1,0,0,0,127,125,1,0,0,0,127,128,1,0,0,0,128,17,1,
-        0,0,0,129,127,1,0,0,0,130,132,5,44,0,0,131,133,3,20,10,0,132,131,
-        1,0,0,0,132,133,1,0,0,0,133,136,1,0,0,0,134,135,5,33,0,0,135,137,
+        0,0,0,129,127,1,0,0,0,130,132,5,45,0,0,131,133,3,20,10,0,132,131,
+        1,0,0,0,132,133,1,0,0,0,133,136,1,0,0,0,134,135,5,34,0,0,135,137,
         3,42,21,0,136,134,1,0,0,0,136,137,1,0,0,0,137,19,1,0,0,0,138,140,
-        5,42,0,0,139,141,3,42,21,0,140,139,1,0,0,0,140,141,1,0,0,0,141,142,
-        1,0,0,0,142,144,5,43,0,0,143,138,1,0,0,0,144,145,1,0,0,0,145,143,
+        5,43,0,0,139,141,3,42,21,0,140,139,1,0,0,0,140,141,1,0,0,0,141,142,
+        1,0,0,0,142,144,5,44,0,0,143,138,1,0,0,0,144,145,1,0,0,0,145,143,
         1,0,0,0,145,146,1,0,0,0,146,21,1,0,0,0,147,157,3,24,12,0,148,157,
         3,26,13,0,149,157,3,28,14,0,150,157,3,30,15,0,151,157,3,32,16,0,
         152,157,3,36,18,0,153,157,3,38,19,0,154,157,3,40,20,0,155,157,3,
         8,4,0,156,147,1,0,0,0,156,148,1,0,0,0,156,149,1,0,0,0,156,150,1,
         0,0,0,156,151,1,0,0,0,156,152,1,0,0,0,156,153,1,0,0,0,156,154,1,
-        0,0,0,156,155,1,0,0,0,157,23,1,0,0,0,158,159,5,37,0,0,159,25,1,0,
+        0,0,0,156,155,1,0,0,0,157,23,1,0,0,0,158,159,5,38,0,0,159,25,1,0,
         0,0,160,162,3,42,21,0,161,160,1,0,0,0,161,162,1,0,0,0,162,163,1,
-        0,0,0,163,164,5,37,0,0,164,27,1,0,0,0,165,166,5,6,0,0,166,167,5,
-        38,0,0,167,168,3,42,21,0,168,169,5,39,0,0,169,172,3,22,11,0,170,
+        0,0,0,163,164,5,38,0,0,164,27,1,0,0,0,165,166,5,6,0,0,166,167,5,
+        39,0,0,167,168,3,42,21,0,168,169,5,40,0,0,169,172,3,22,11,0,170,
         171,5,7,0,0,171,173,3,22,11,0,172,170,1,0,0,0,172,173,1,0,0,0,173,
-        29,1,0,0,0,174,175,5,8,0,0,175,176,5,38,0,0,176,177,3,42,21,0,177,
-        178,5,39,0,0,178,179,3,22,11,0,179,31,1,0,0,0,180,181,5,9,0,0,181,
-        183,5,38,0,0,182,184,3,34,17,0,183,182,1,0,0,0,183,184,1,0,0,0,184,
-        185,1,0,0,0,185,187,5,37,0,0,186,188,3,42,21,0,187,186,1,0,0,0,187,
-        188,1,0,0,0,188,189,1,0,0,0,189,191,5,37,0,0,190,192,3,42,21,0,191,
-        190,1,0,0,0,191,192,1,0,0,0,192,193,1,0,0,0,193,194,5,39,0,0,194,
+        29,1,0,0,0,174,175,5,8,0,0,175,176,5,39,0,0,176,177,3,42,21,0,177,
+        178,5,40,0,0,178,179,3,22,11,0,179,31,1,0,0,0,180,181,5,9,0,0,181,
+        183,5,39,0,0,182,184,3,34,17,0,183,182,1,0,0,0,183,184,1,0,0,0,184,
+        185,1,0,0,0,185,187,5,38,0,0,186,188,3,42,21,0,187,186,1,0,0,0,187,
+        188,1,0,0,0,188,189,1,0,0,0,189,191,5,38,0,0,190,192,3,42,21,0,191,
+        190,1,0,0,0,191,192,1,0,0,0,192,193,1,0,0,0,193,194,5,40,0,0,194,
         195,3,22,11,0,195,33,1,0,0,0,196,199,3,14,7,0,197,199,3,42,21,0,
         198,196,1,0,0,0,198,197,1,0,0,0,199,35,1,0,0,0,200,202,5,5,0,0,201,
         203,3,42,21,0,202,201,1,0,0,0,202,203,1,0,0,0,203,204,1,0,0,0,204,
-        205,5,37,0,0,205,37,1,0,0,0,206,207,5,10,0,0,207,208,5,37,0,0,208,
-        39,1,0,0,0,209,210,5,11,0,0,210,211,5,37,0,0,211,41,1,0,0,0,212,
-        217,3,44,22,0,213,214,5,36,0,0,214,216,3,44,22,0,215,213,1,0,0,0,
+        205,5,38,0,0,205,37,1,0,0,0,206,207,5,10,0,0,207,208,5,38,0,0,208,
+        39,1,0,0,0,209,210,5,11,0,0,210,211,5,38,0,0,211,41,1,0,0,0,212,
+        217,3,44,22,0,213,214,5,37,0,0,214,216,3,44,22,0,215,213,1,0,0,0,
         216,219,1,0,0,0,217,215,1,0,0,0,217,218,1,0,0,0,218,43,1,0,0,0,219,
         217,1,0,0,0,220,226,3,48,24,0,221,222,3,62,31,0,222,223,3,46,23,
         0,223,224,3,44,22,0,224,226,1,0,0,0,225,220,1,0,0,0,225,221,1,0,
         0,0,226,45,1,0,0,0,227,228,7,0,0,0,228,47,1,0,0,0,229,235,3,50,25,
-        0,230,231,5,34,0,0,231,232,3,42,21,0,232,233,5,35,0,0,233,234,3,
+        0,230,231,5,35,0,0,231,232,3,42,21,0,232,233,5,36,0,0,233,234,3,
         48,24,0,234,236,1,0,0,0,235,230,1,0,0,0,235,236,1,0,0,0,236,49,1,
         0,0,0,237,242,3,52,26,0,238,239,5,24,0,0,239,241,3,52,26,0,240,238,
         1,0,0,0,241,244,1,0,0,0,242,240,1,0,0,0,242,243,1,0,0,0,243,51,1,
@@ -114,19 +114,20 @@ def serializedATN():
         7,5,0,0,287,289,3,62,31,0,288,285,1,0,0,0,288,286,1,0,0,0,289,63,
         1,0,0,0,290,294,3,70,35,0,291,293,3,66,33,0,292,291,1,0,0,0,293,
         296,1,0,0,0,294,292,1,0,0,0,294,295,1,0,0,0,295,65,1,0,0,0,296,294,
-        1,0,0,0,297,298,5,42,0,0,298,299,3,42,21,0,299,300,5,43,0,0,300,
-        309,1,0,0,0,301,303,5,38,0,0,302,304,3,68,34,0,303,302,1,0,0,0,303,
-        304,1,0,0,0,304,305,1,0,0,0,305,309,5,39,0,0,306,309,5,12,0,0,307,
+        1,0,0,0,297,298,5,43,0,0,298,299,3,42,21,0,299,300,5,44,0,0,300,
+        309,1,0,0,0,301,303,5,39,0,0,302,304,3,68,34,0,303,302,1,0,0,0,303,
+        304,1,0,0,0,304,305,1,0,0,0,305,309,5,40,0,0,306,309,5,12,0,0,307,
         309,5,13,0,0,308,297,1,0,0,0,308,301,1,0,0,0,308,306,1,0,0,0,308,
-        307,1,0,0,0,309,67,1,0,0,0,310,315,3,44,22,0,311,312,5,36,0,0,312,
+        307,1,0,0,0,309,67,1,0,0,0,310,315,3,44,22,0,311,312,5,37,0,0,312,
         314,3,44,22,0,313,311,1,0,0,0,314,317,1,0,0,0,315,313,1,0,0,0,315,
-        316,1,0,0,0,316,69,1,0,0,0,317,315,1,0,0,0,318,327,5,44,0,0,319,
-        327,5,45,0,0,320,327,5,46,0,0,321,327,5,47,0,0,322,323,5,38,0,0,
-        323,324,3,42,21,0,324,325,5,39,0,0,325,327,1,0,0,0,326,318,1,0,0,
-        0,326,319,1,0,0,0,326,320,1,0,0,0,326,321,1,0,0,0,326,322,1,0,0,
-        0,327,71,1,0,0,0,328,329,7,6,0,0,329,73,1,0,0,0,34,77,85,95,101,
-        107,114,127,132,136,140,145,156,161,172,183,187,191,198,202,217,
-        225,235,242,250,258,266,274,282,288,294,303,308,315,326
+        316,1,0,0,0,316,69,1,0,0,0,317,315,1,0,0,0,318,328,5,45,0,0,319,
+        328,5,46,0,0,320,328,5,47,0,0,321,328,5,48,0,0,322,328,5,49,0,0,
+        323,324,5,39,0,0,324,325,3,42,21,0,325,326,5,40,0,0,326,328,1,0,
+        0,0,327,318,1,0,0,0,327,319,1,0,0,0,327,320,1,0,0,0,327,321,1,0,
+        0,0,327,322,1,0,0,0,327,323,1,0,0,0,328,71,1,0,0,0,329,330,7,6,0,
+        0,330,73,1,0,0,0,34,77,85,95,101,107,114,127,132,136,140,145,156,
+        161,172,183,187,191,198,202,217,225,235,242,250,258,266,274,282,
+        288,294,303,308,315,327
     ]
 
 class SimpleCParser ( Parser ):
@@ -143,20 +144,20 @@ class SimpleCParser ( Parser ):
                      "'return'", "'if'", "'else'", "'while'", "'for'", "'break'", 
                      "'continue'", "'++'", "'--'", "'+='", "'-='", "'*='", 
                      "'/='", "'%='", "'=='", "'!='", "'<='", "'>='", "'&&'", 
-                     "'||'", "'+'", "'-'", "'*'", "'/'", "'%'", "'<'", "'>'", 
-                     "'!'", "'='", "'?'", "':'", "','", "';'", "'('", "')'", 
-                     "'{'", "'}'", "'['", "']'" ]
+                     "'||'", "'&'", "'+'", "'-'", "'*'", "'/'", "'%'", "'<'", 
+                     "'>'", "'!'", "'='", "'?'", "':'", "','", "';'", "'('", 
+                     "')'", "'{'", "'}'", "'['", "']'" ]
 
     symbolicNames = [ "<INVALID>", "INT", "FLOAT", "CHAR", "VOID", "RETURN", 
                       "IF", "ELSE", "WHILE", "FOR", "BREAK", "CONTINUE", 
                       "INC", "DEC", "ADD_ASSIGN", "SUB_ASSIGN", "MUL_ASSIGN", 
                       "DIV_ASSIGN", "MOD_ASSIGN", "EQ", "NEQ", "LTE", "GTE", 
-                      "AND", "OR", "PLUS", "MINUS", "MUL", "DIV", "MOD", 
-                      "LT", "GT", "NOT", "ASSIGN", "QUESTION", "COLON", 
+                      "AND", "OR", "AMP", "PLUS", "MINUS", "MUL", "DIV", 
+                      "MOD", "LT", "GT", "NOT", "ASSIGN", "QUESTION", "COLON", 
                       "COMMA", "SEMI", "LPAREN", "RPAREN", "LBRACE", "RBRACE", 
                       "LBRACK", "RBRACK", "IDENTIFIER", "INTEGER", "FLOAT_LITERAL", 
-                      "CHAR_LITERAL", "WS", "LINE_COMMENT", "BLOCK_COMMENT", 
-                      "ERROR_CHAR" ]
+                      "CHAR_LITERAL", "STRING_LITERAL", "WS", "LINE_COMMENT", 
+                      "BLOCK_COMMENT", "ERROR_CHAR" ]
 
     RULE_program = 0
     RULE_functionDef = 1
@@ -232,33 +233,35 @@ class SimpleCParser ( Parser ):
     GTE=22
     AND=23
     OR=24
-    PLUS=25
-    MINUS=26
-    MUL=27
-    DIV=28
-    MOD=29
-    LT=30
-    GT=31
-    NOT=32
-    ASSIGN=33
-    QUESTION=34
-    COLON=35
-    COMMA=36
-    SEMI=37
-    LPAREN=38
-    RPAREN=39
-    LBRACE=40
-    RBRACE=41
-    LBRACK=42
-    RBRACK=43
-    IDENTIFIER=44
-    INTEGER=45
-    FLOAT_LITERAL=46
-    CHAR_LITERAL=47
-    WS=48
-    LINE_COMMENT=49
-    BLOCK_COMMENT=50
-    ERROR_CHAR=51
+    AMP=25
+    PLUS=26
+    MINUS=27
+    MUL=28
+    DIV=29
+    MOD=30
+    LT=31
+    GT=32
+    NOT=33
+    ASSIGN=34
+    QUESTION=35
+    COLON=36
+    COMMA=37
+    SEMI=38
+    LPAREN=39
+    RPAREN=40
+    LBRACE=41
+    RBRACE=42
+    LBRACK=43
+    RBRACK=44
+    IDENTIFIER=45
+    INTEGER=46
+    FLOAT_LITERAL=47
+    CHAR_LITERAL=48
+    STRING_LITERAL=49
+    WS=50
+    LINE_COMMENT=51
+    BLOCK_COMMENT=52
+    ERROR_CHAR=53
 
     def __init__(self, input:TokenStream, output:TextIO = sys.stdout):
         super().__init__(input, output)
@@ -470,7 +473,7 @@ class SimpleCParser ( Parser ):
             self.state = 95
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            while _la==36:
+            while _la==37:
                 self.state = 91
                 self.match(SimpleCParser.COMMA)
                 self.state = 92
@@ -540,7 +543,7 @@ class SimpleCParser ( Parser ):
             self.state = 101
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if _la==42:
+            if _la==43:
                 self.state = 100
                 self.arraySuffix()
 
@@ -606,7 +609,7 @@ class SimpleCParser ( Parser ):
             self.state = 107
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            while (((_la) & ~0x3f) == 0 and ((1 << _la) & 265399014801278) != 0):
+            while (((_la) & ~0x3f) == 0 and ((1 << _la) & 1093748016562046) != 0):
                 self.state = 104
                 self.blockItem()
                 self.state = 109
@@ -672,7 +675,7 @@ class SimpleCParser ( Parser ):
                 self.state = 112
                 self.declaration()
                 pass
-            elif token in [5, 6, 8, 9, 10, 11, 12, 13, 25, 26, 32, 37, 38, 40, 44, 45, 46, 47]:
+            elif token in [5, 6, 8, 9, 10, 11, 12, 13, 25, 26, 27, 33, 38, 39, 41, 45, 46, 47, 48, 49]:
                 self.enterOuterAlt(localctx, 2)
                 self.state = 113
                 self.statement()
@@ -848,7 +851,7 @@ class SimpleCParser ( Parser ):
             self.state = 127
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            while _la==36:
+            while _la==37:
                 self.state = 123
                 self.match(SimpleCParser.COMMA)
                 self.state = 124
@@ -919,7 +922,7 @@ class SimpleCParser ( Parser ):
             self.state = 132
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if _la==42:
+            if _la==43:
                 self.state = 131
                 self.arraySuffix()
 
@@ -927,7 +930,7 @@ class SimpleCParser ( Parser ):
             self.state = 136
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if _la==33:
+            if _la==34:
                 self.state = 134
                 self.match(SimpleCParser.ASSIGN)
                 self.state = 135
@@ -1005,7 +1008,7 @@ class SimpleCParser ( Parser ):
                 self.state = 140
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                if (((_la) & ~0x3f) == 0 and ((1 << _la) & 264162064216064) != 0):
+                if (((_la) & ~0x3f) == 0 and ((1 << _la) & 1091274115395584) != 0):
                     self.state = 139
                     self.expression()
 
@@ -1015,7 +1018,7 @@ class SimpleCParser ( Parser ):
                 self.state = 145 
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                if not (_la==42):
+                if not (_la==43):
                     break
 
         except RecognitionException as re:
@@ -1253,7 +1256,7 @@ class SimpleCParser ( Parser ):
             self.state = 161
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if (((_la) & ~0x3f) == 0 and ((1 << _la) & 264162064216064) != 0):
+            if (((_la) & ~0x3f) == 0 and ((1 << _la) & 1091274115395584) != 0):
                 self.state = 160
                 self.expression()
 
@@ -1494,7 +1497,7 @@ class SimpleCParser ( Parser ):
             self.state = 183
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if (((_la) & ~0x3f) == 0 and ((1 << _la) & 264162064216094) != 0):
+            if (((_la) & ~0x3f) == 0 and ((1 << _la) & 1091274115395614) != 0):
                 self.state = 182
                 self.forInit()
 
@@ -1504,7 +1507,7 @@ class SimpleCParser ( Parser ):
             self.state = 187
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if (((_la) & ~0x3f) == 0 and ((1 << _la) & 264162064216064) != 0):
+            if (((_la) & ~0x3f) == 0 and ((1 << _la) & 1091274115395584) != 0):
                 self.state = 186
                 self.expression()
 
@@ -1514,7 +1517,7 @@ class SimpleCParser ( Parser ):
             self.state = 191
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if (((_la) & ~0x3f) == 0 and ((1 << _la) & 264162064216064) != 0):
+            if (((_la) & ~0x3f) == 0 and ((1 << _la) & 1091274115395584) != 0):
                 self.state = 190
                 self.expression()
 
@@ -1580,7 +1583,7 @@ class SimpleCParser ( Parser ):
                 self.state = 196
                 self.declarationNoSemi()
                 pass
-            elif token in [12, 13, 25, 26, 32, 38, 44, 45, 46, 47]:
+            elif token in [12, 13, 25, 26, 27, 33, 39, 45, 46, 47, 48, 49]:
                 self.enterOuterAlt(localctx, 2)
                 self.state = 197
                 self.expression()
@@ -1646,7 +1649,7 @@ class SimpleCParser ( Parser ):
             self.state = 202
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if (((_la) & ~0x3f) == 0 and ((1 << _la) & 264162064216064) != 0):
+            if (((_la) & ~0x3f) == 0 and ((1 << _la) & 1091274115395584) != 0):
                 self.state = 201
                 self.expression()
 
@@ -1967,7 +1970,7 @@ class SimpleCParser ( Parser ):
             self.enterOuterAlt(localctx, 1)
             self.state = 227
             _la = self._input.LA(1)
-            if not((((_la) & ~0x3f) == 0 and ((1 << _la) & 8590442496) != 0)):
+            if not((((_la) & ~0x3f) == 0 and ((1 << _la) & 17180377088) != 0)):
                 self._errHandler.recoverInline(self)
             else:
                 self._errHandler.reportMatch(self)
@@ -2038,7 +2041,7 @@ class SimpleCParser ( Parser ):
             self.state = 235
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            if _la==34:
+            if _la==35:
                 self.state = 230
                 self.match(SimpleCParser.QUESTION)
                 self.state = 231
@@ -2349,10 +2352,10 @@ class SimpleCParser ( Parser ):
             self.state = 266
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            while (((_la) & ~0x3f) == 0 and ((1 << _la) & 3227516928) != 0):
+            while (((_la) & ~0x3f) == 0 and ((1 << _la) & 6448742400) != 0):
                 self.state = 262
                 _la = self._input.LA(1)
-                if not((((_la) & ~0x3f) == 0 and ((1 << _la) & 3227516928) != 0)):
+                if not((((_la) & ~0x3f) == 0 and ((1 << _la) & 6448742400) != 0)):
                     self._errHandler.recoverInline(self)
                 else:
                     self._errHandler.reportMatch(self)
@@ -2430,10 +2433,10 @@ class SimpleCParser ( Parser ):
             self.state = 274
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            while _la==25 or _la==26:
+            while _la==26 or _la==27:
                 self.state = 270
                 _la = self._input.LA(1)
-                if not(_la==25 or _la==26):
+                if not(_la==26 or _la==27):
                     self._errHandler.recoverInline(self)
                 else:
                     self._errHandler.reportMatch(self)
@@ -2517,10 +2520,10 @@ class SimpleCParser ( Parser ):
             self.state = 282
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            while (((_la) & ~0x3f) == 0 and ((1 << _la) & 939524096) != 0):
+            while (((_la) & ~0x3f) == 0 and ((1 << _la) & 1879048192) != 0):
                 self.state = 278
                 _la = self._input.LA(1)
-                if not((((_la) & ~0x3f) == 0 and ((1 << _la) & 939524096) != 0)):
+                if not((((_la) & ~0x3f) == 0 and ((1 << _la) & 1879048192) != 0)):
                     self._errHandler.recoverInline(self)
                 else:
                     self._errHandler.reportMatch(self)
@@ -2570,6 +2573,9 @@ class SimpleCParser ( Parser ):
         def NOT(self):
             return self.getToken(SimpleCParser.NOT, 0)
 
+        def AMP(self):
+            return self.getToken(SimpleCParser.AMP, 0)
+
         def getRuleIndex(self):
             return SimpleCParser.RULE_unaryExpression
 
@@ -2599,16 +2605,16 @@ class SimpleCParser ( Parser ):
             self.state = 288
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [38, 44, 45, 46, 47]:
+            if token in [39, 45, 46, 47, 48, 49]:
                 self.enterOuterAlt(localctx, 1)
                 self.state = 285
                 self.postfixExpression()
                 pass
-            elif token in [12, 13, 25, 26, 32]:
+            elif token in [12, 13, 25, 26, 27, 33]:
                 self.enterOuterAlt(localctx, 2)
                 self.state = 286
                 _la = self._input.LA(1)
-                if not((((_la) & ~0x3f) == 0 and ((1 << _la) & 4395642880) != 0)):
+                if not((((_la) & ~0x3f) == 0 and ((1 << _la) & 8824827904) != 0)):
                     self._errHandler.recoverInline(self)
                 else:
                     self._errHandler.reportMatch(self)
@@ -2678,7 +2684,7 @@ class SimpleCParser ( Parser ):
             self.state = 294
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            while (((_la) & ~0x3f) == 0 and ((1 << _la) & 4672924430336) != 0):
+            while (((_la) & ~0x3f) == 0 and ((1 << _la) & 9345848848384) != 0):
                 self.state = 291
                 self.postfixPart()
                 self.state = 296
@@ -2756,7 +2762,7 @@ class SimpleCParser ( Parser ):
             self.state = 308
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [42]:
+            if token in [43]:
                 self.enterOuterAlt(localctx, 1)
                 self.state = 297
                 self.match(SimpleCParser.LBRACK)
@@ -2765,14 +2771,14 @@ class SimpleCParser ( Parser ):
                 self.state = 299
                 self.match(SimpleCParser.RBRACK)
                 pass
-            elif token in [38]:
+            elif token in [39]:
                 self.enterOuterAlt(localctx, 2)
                 self.state = 301
                 self.match(SimpleCParser.LPAREN)
                 self.state = 303
                 self._errHandler.sync(self)
                 _la = self._input.LA(1)
-                if (((_la) & ~0x3f) == 0 and ((1 << _la) & 264162064216064) != 0):
+                if (((_la) & ~0x3f) == 0 and ((1 << _la) & 1091274115395584) != 0):
                     self.state = 302
                     self.argumentList()
 
@@ -2854,7 +2860,7 @@ class SimpleCParser ( Parser ):
             self.state = 315
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            while _la==36:
+            while _la==37:
                 self.state = 311
                 self.match(SimpleCParser.COMMA)
                 self.state = 312
@@ -2891,6 +2897,9 @@ class SimpleCParser ( Parser ):
         def CHAR_LITERAL(self):
             return self.getToken(SimpleCParser.CHAR_LITERAL, 0)
 
+        def STRING_LITERAL(self):
+            return self.getToken(SimpleCParser.STRING_LITERAL, 0)
+
         def LPAREN(self):
             return self.getToken(SimpleCParser.LPAREN, 0)
 
@@ -2926,36 +2935,41 @@ class SimpleCParser ( Parser ):
         localctx = SimpleCParser.PrimaryExpressionContext(self, self._ctx, self.state)
         self.enterRule(localctx, 70, self.RULE_primaryExpression)
         try:
-            self.state = 326
+            self.state = 327
             self._errHandler.sync(self)
             token = self._input.LA(1)
-            if token in [44]:
+            if token in [45]:
                 self.enterOuterAlt(localctx, 1)
                 self.state = 318
                 self.match(SimpleCParser.IDENTIFIER)
                 pass
-            elif token in [45]:
+            elif token in [46]:
                 self.enterOuterAlt(localctx, 2)
                 self.state = 319
                 self.match(SimpleCParser.INTEGER)
                 pass
-            elif token in [46]:
+            elif token in [47]:
                 self.enterOuterAlt(localctx, 3)
                 self.state = 320
                 self.match(SimpleCParser.FLOAT_LITERAL)
                 pass
-            elif token in [47]:
+            elif token in [48]:
                 self.enterOuterAlt(localctx, 4)
                 self.state = 321
                 self.match(SimpleCParser.CHAR_LITERAL)
                 pass
-            elif token in [38]:
+            elif token in [49]:
                 self.enterOuterAlt(localctx, 5)
                 self.state = 322
-                self.match(SimpleCParser.LPAREN)
+                self.match(SimpleCParser.STRING_LITERAL)
+                pass
+            elif token in [39]:
+                self.enterOuterAlt(localctx, 6)
                 self.state = 323
-                self.expression()
+                self.match(SimpleCParser.LPAREN)
                 self.state = 324
+                self.expression()
+                self.state = 325
                 self.match(SimpleCParser.RPAREN)
                 pass
             else:
@@ -3016,7 +3030,7 @@ class SimpleCParser ( Parser ):
         self._la = 0 # Token type
         try:
             self.enterOuterAlt(localctx, 1)
-            self.state = 328
+            self.state = 329
             _la = self._input.LA(1)
             if not((((_la) & ~0x3f) == 0 and ((1 << _la) & 30) != 0)):
                 self._errHandler.recoverInline(self)

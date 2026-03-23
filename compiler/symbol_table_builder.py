@@ -4,23 +4,52 @@ from generated.SimpleCVisitor import SimpleCVisitor
 from generated.SimpleCParser import SimpleCParser
 
 
+BUILTIN_FUNCTIONS = {
+    "printf": {"kind": "func", "type": "int", "line": 0, "builtin": True},
+    "scanf": {"kind": "func", "type": "int", "line": 0, "builtin": True},
+}
+
+
 class SymbolTableBuilder(SimpleCVisitor):
     """
     Builds a simple flat symbol table:
-      name -> {"kind": "var"|"param"|"func", "type": <type>, "line": <line>}
-    Note: flat table is fine for deterministic typo correction (conservative).
+      name -> {"kind": "var"|"param"|"func", "type": <type>, "line": <line>, ...}
+
+    Flat table is fine for:
+    - deterministic typo correction
+    - undeclared identifier checks
+    - simple semantic support
+
+    We also preload a few builtin/library functions so they are not treated
+    as undeclared identifiers.
     """
 
     def __init__(self):
         super().__init__()
         self.symbols: Dict[str, Dict[str, Any]] = {}
 
+        # Preload builtins
+        for name, info in BUILTIN_FUNCTIONS.items():
+            self.symbols[name] = dict(info)
+
     def _type_text(self, type_ctx) -> str:
         return type_ctx.getText() if type_ctx else "?"
 
-    def _add_symbol(self, name: str, kind: str, typ: str, line: int):
-        if name and name not in self.symbols:
-            self.symbols[name] = {"kind": kind, "type": typ, "line": line}
+    def _add_symbol(self, name: str, kind: str, typ: str, line: int, builtin: bool = False):
+        if not name:
+            return
+
+        # Do not overwrite an existing symbol.
+        # This preserves first declaration behavior and keeps builtins stable.
+        if name not in self.symbols:
+            entry = {
+                "kind": kind,
+                "type": typ,
+                "line": line,
+            }
+            if builtin:
+                entry["builtin"] = True
+            self.symbols[name] = entry
 
     # -------------------------
     # Functions / Params
@@ -51,19 +80,21 @@ class SymbolTableBuilder(SimpleCVisitor):
     # -------------------------
     def visitDeclaration(self, ctx: SimpleCParser.DeclarationContext):
         """
-        declaration : typeSpecifier initDeclaratorList SEMI
-                   | declarationNoSemi SEMI        (if you rewired grammar this way)
-        We handle both safely by probing what exists.
+        declaration : declarationNoSemi SEMI
+        or older direct form if grammar/generated code differs.
+
+        We handle both conservatively.
         """
-        # Case 1: direct typeSpecifier/initDeclaratorList
         type_ctx = getattr(ctx, "typeSpecifier", None)
         list_ctx = getattr(ctx, "initDeclaratorList", None)
 
+        # Older/direct shape
         if callable(type_ctx) and callable(list_ctx):
             typ = self._type_text(ctx.typeSpecifier())
             lst = ctx.initDeclaratorList()
             if lst is None:
                 return self.visitChildren(ctx)
+
             for init_ctx in lst.initDeclarator():
                 ident = init_ctx.IDENTIFIER()
                 if ident is None:
@@ -71,9 +102,10 @@ class SymbolTableBuilder(SimpleCVisitor):
                 name = ident.getText()
                 line = ident.symbol.line if hasattr(ident, "symbol") else -1
                 self._add_symbol(name, "var", typ, line)
+
             return self.visitChildren(ctx)
 
-        # Case 2: wrapped declarationNoSemi
+        # Current wrapped shape
         dn = None
         try:
             dn = ctx.declarationNoSemi()
@@ -88,7 +120,7 @@ class SymbolTableBuilder(SimpleCVisitor):
     def visitDeclarationNoSemi(self, ctx: SimpleCParser.DeclarationNoSemiContext):
         """
         declarationNoSemi : typeSpecifier initDeclaratorList ;
-        Used inside forInit.
+        Used inside normal declarations and forInit.
         """
         typ = self._type_text(ctx.typeSpecifier())
         lst = ctx.initDeclaratorList()

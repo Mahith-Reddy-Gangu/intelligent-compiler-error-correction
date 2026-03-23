@@ -6,10 +6,12 @@ from typing import Optional, Tuple, List
 
 # Keywords supported by your grammar/project.
 # Keep this aligned with the grammar.
+# NOTE:
+# - "main" is intentionally NOT treated as a generic keyword typo target here.
+# - lexical typo correction must stay conservative.
 KEYWORDS = [
     "int",
     "return",
-    "main",
     "if",
     "else",
     "while",
@@ -47,7 +49,7 @@ TOKEN_NORMALIZATIONS = {
     "=>=": ">=",
     "=<": "<=",
     "=>": ">=",
-    "==>": "=>",   # leave weird cases less destructive
+    "==>": "=>",
 }
 
 IDENT_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\b")
@@ -142,10 +144,13 @@ def _normalize_common_tokens(source_text: str) -> Tuple[str, List[str]]:
 
 def _fix_keyword_typos(source_text: str) -> Tuple[str, List[str]]:
     """
-    Only fix identifier-like words in code segments, and only if:
-    - edit distance is exactly 1 from a known keyword, OR
-    - a very common typo pattern is matched
-    - and the token is not already a valid keyword
+    Extremely conservative keyword typo correction.
+
+    Design goals:
+    - NEVER mutate common short identifiers like i/j/k into keywords
+    - only fix a small allowlist of common, high-confidence typos
+    - do not use generic edit-distance matching for lexical correction
+    - stay outside strings/comments/chars
     """
     segments = _split_code_and_noncode(source_text)
     fixes: List[str] = []
@@ -164,7 +169,13 @@ def _fix_keyword_typos(source_text: str) -> Tuple[str, List[str]]:
             nonlocal changed
             word = match.group(0)
 
+            # Already a supported keyword -> keep it
             if word in KEYWORDS:
+                return word
+
+            # Very important safety: never keyword-correct 1-char identifiers
+            # like i, j, k, x, y, z.
+            if len(word) <= 1:
                 return word
 
             replacement = _best_keyword_replacement(word)
@@ -188,73 +199,48 @@ def _fix_keyword_typos(source_text: str) -> Tuple[str, List[str]]:
 
 
 def _best_keyword_replacement(word: str) -> Optional[str]:
+    """
+    High-confidence typo map only.
+
+    No generic edit-distance search here.
+    That was the source of the bug: 'i' -> 'if'.
+
+    Keep this intentionally narrow.
+    """
     common_map = {
         "retrun": "return",
         "reutrn": "return",
         "retun": "return",
-        "itre": "int",
+        "retrn": "return",
+
         "innt": "int",
-        "mian": "main",
+        "itn": "int",
+
         "whlie": "while",
-        "fi": "if",
+        "wile": "while",
+
         "esle": "else",
-        "fro": "for",
-        "breka": "break",
+
         "contniue": "continue",
-        "doulbe": "double",
+        "continuee": "continue",
+
+        "breka": "break",
+
+        "fro": "for",
+
         "flota": "float",
+        "flaot": "float",
+
+        "doulbe": "double",
+
         "viod": "void",
+
+        "cahr": "char",
+        "prinft": "printf",
+        "scnaf": "scanf",
     }
 
-    if word in common_map:
-        return common_map[word]
-
-    candidates = [kw for kw in KEYWORDS if _edit_distance_leq_one(word, kw)]
-    if len(candidates) == 1:
-        return candidates[0]
-
-    return None
-
-
-def _edit_distance_leq_one(a: str, b: str) -> bool:
-    """
-    Fast check for Levenshtein distance <= 1.
-    Conservative and enough for typo correction.
-    """
-    if a == b:
-        return True
-
-    la = len(a)
-    lb = len(b)
-
-    if abs(la - lb) > 1:
-        return False
-
-    # Same length: allow one substitution
-    if la == lb:
-        mismatches = sum(1 for x, y in zip(a, b) if x != y)
-        return mismatches <= 1
-
-    # Ensure a is shorter
-    if la > lb:
-        a, b = b, a
-        la, lb = lb, la
-
-    # Now lb == la + 1 : allow one insertion/deletion
-    i = j = 0
-    used = False
-
-    while i < la and j < lb:
-        if a[i] == b[j]:
-            i += 1
-            j += 1
-        else:
-            if used:
-                return False
-            used = True
-            j += 1
-
-    return True
+    return common_map.get(word)
 
 
 # ------------------------------------------------------------------

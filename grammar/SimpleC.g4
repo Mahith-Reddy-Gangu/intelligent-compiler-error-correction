@@ -159,10 +159,10 @@ multiplicativeExpression
     : unaryExpression ((MUL | DIV | MOD) unaryExpression)*
     ;
 
-// unary: ++x, --x, +x, -x, !x
+// unary: ++x, --x, +x, -x, !x, &x
 unaryExpression
     : postfixExpression
-    | (INC | DEC | PLUS | MINUS | NOT) unaryExpression
+    | (INC | DEC | PLUS | MINUS | NOT | AMP) unaryExpression
     ;
 
 // postfix: x++, x--, calls f(a,b), array indexing a[i]
@@ -171,10 +171,10 @@ postfixExpression
     ;
 
 postfixPart
-    : LBRACK expression RBRACK           // a[i]
-    | LPAREN argumentList? RPAREN        // f(...)
-    | INC                                // x++
-    | DEC                                // x--
+    : LBRACK expression RBRACK
+    | LPAREN argumentList? RPAREN
+    | INC
+    | DEC
     ;
 
 argumentList
@@ -186,6 +186,7 @@ primaryExpression
     | INTEGER
     | FLOAT_LITERAL
     | CHAR_LITERAL
+    | STRING_LITERAL
     | LPAREN expression RPAREN
     ;
 
@@ -235,6 +236,8 @@ GTE      : '>=';
 AND      : '&&';
 OR       : '||';
 
+AMP      : '&';
+
 PLUS     : '+';
 MINUS    : '-';
 MUL      : '*';
@@ -271,9 +274,12 @@ FLOAT_LITERAL
     : [0-9]+ '.' [0-9]+
     ;
 
-// simple char literal support: 'a' '\n' '\t' '\''
 CHAR_LITERAL
     : '\'' ( ~['\\\r\n] | '\\' [nrt'\\] ) '\''
+    ;
+
+STRING_LITERAL
+    : '"' ( ~["\\\r\n] | '\\' . )* '"'
     ;
 
 WS
@@ -288,7 +294,6 @@ BLOCK_COMMENT
     : '/*' .*? '*/' -> skip
     ;
 
-// predictable illegal token handling
 ERROR_CHAR
     : .
     ;

@@ -7,6 +7,7 @@ from typing import Dict, List
 class StringFlowIssue:
     severity: str
     message: str
+    suggestion: str
     score: int
 
 
@@ -20,6 +21,7 @@ class StringFlowChecker:
                 StringFlowIssue(
                     severity="HIGH",
                     message="Heuristic warning: command string may be constructed via sprintf before system() call",
+                    suggestion="Avoid building shell commands dynamically; prefer fixed commands or validated allowlisted arguments.",
                     score=3,
                 )
             )
@@ -29,6 +31,7 @@ class StringFlowChecker:
                 StringFlowIssue(
                     severity="HIGH",
                     message="Heuristic warning: command string may be constructed via strcat before system() call",
+                    suggestion="Avoid concatenating command strings before execution; sanitize all components or avoid shell execution entirely.",
                     score=3,
                 )
             )
@@ -38,6 +41,7 @@ class StringFlowChecker:
                 StringFlowIssue(
                     severity="HIGH",
                     message="Heuristic warning: command string may be copied via strcpy before system() call",
+                    suggestion="Avoid copying command strings into execution buffers; use fixed safe commands or validated inputs only.",
                     score=3,
                 )
             )
@@ -107,6 +111,7 @@ class StringFlowChecker:
                         StringFlowIssue(
                             severity="CRITICAL",
                             message=f"Reconstructed dangerous command '{val}' passed to '{sink}' via variable '{var}'",
+                            suggestion="Do not construct destructive shell commands dynamically. Remove the command or replace it with a safe non-shell alternative.",
                             score=5,
                         )
                     )
@@ -115,6 +120,7 @@ class StringFlowChecker:
                         StringFlowIssue(
                             severity="HIGH",
                             message=f"Reconstructed suspicious command '{val}' passed to '{sink}' via variable '{var}'",
+                            suggestion="Avoid reconstructing executable command strings dynamically. Validate command components against an allowlist.",
                             score=4,
                         )
                     )

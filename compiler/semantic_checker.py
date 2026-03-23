@@ -27,7 +27,6 @@ except Exception:
             "Expected generated/SimpleCVisitor.py or generated/SimpleCParserVisitor.py"
         ) from e
 
-
 @dataclass
 class _DeclInfo:
     name: str
@@ -612,24 +611,32 @@ class SemanticChecker(_VISITOR_BASE):
         parent = getattr(node, "parentCtx", None)
         if parent is not None:
             pname = parent.__class__.__name__
-            # don't count declaration identifiers
             if pname in {"InitDeclaratorContext", "ParamContext", "FunctionDefContext"}:
                 return None
 
         name = node.getText()
         line, col = _tok_line_col(node)
 
+        # hard allowlist for builtin/library functions
+        if name in {"printf", "scanf"}:
+            return None
+
         decl = self._lookup(name)
         if decl is None:
             self._add_issue("undeclared", name, line, col, f"Use of undeclared identifier '{name}'")
             return None
 
-        # use-before-declare (same-line heuristic)
         depth = len(self._scopes) - 1
         if (depth, name) in self._decl_pos:
             dline, dcol = self._decl_pos[(depth, name)]
             if line == dline and col < dcol:
-                self._add_issue("use_before_declare", name, line, col, f"Identifier '{name}' used before its declaration in the same scope")
+                self._add_issue(
+                    "use_before_declare",
+                    name,
+                    line,
+                    col,
+                    f"Identifier '{name}' used before its declaration in the same scope"
+                )
 
         if decl.ctype != "func":
             decl.used = True
