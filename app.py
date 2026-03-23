@@ -26,21 +26,33 @@ def repair():
     return jsonify(result)
 
 
+@app.route("/api/testcase", methods=["POST"])
+def testcase():
+    data = request.json or {}
+    code = data.get("code", "")
+    filename = data.get("filename", "test_case.c")
+
+    result = repair_source_for_gui(code, filename)
+    return jsonify(result)
+
+
 @app.route("/api/examples")
 def examples():
-    example_dir = "examples"
+    example_root = "examples"
     files = []
 
-    if os.path.exists(example_dir):
-        for f in os.listdir(example_dir):
-            if f.endswith(".c"):
-                files.append(f)
+    if os.path.exists(example_root):
+        for root, _, filenames in os.walk(example_root):
+            for f in filenames:
+                if f.endswith(".c"):
+                    rel_path = os.path.relpath(os.path.join(root, f), example_root)
+                    files.append(rel_path.replace("\\", "/"))
 
     files.sort()
     return jsonify(files)
 
 
-@app.route("/api/example/<name>")
+@app.route("/api/example/<path:name>")
 def load_example(name):
     path = os.path.join("examples", name)
 

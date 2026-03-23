@@ -10,6 +10,7 @@ from compiler.security_checker import SecurityChecker
 from compiler.taint_checker import TaintChecker
 from compiler.string_flow_checker import StringFlowChecker
 from compiler.unused_var_fixer import remove_unused_decl_at
+from compiler.security_auto_fixer import SecurityAutoFixer
 
 from test_parser import (
     parse_source,
@@ -126,6 +127,14 @@ def _run_semantic_phase_for_gui(
     logs: List[str],
     stats: Dict[str, int],
 ):
+    """
+    GUI version of the unified iterative semantic phase.
+
+    Important design choice:
+    - Do NOT stop immediately on undeclared identifiers that may actually be
+      security-relevant library calls like gets/strcpy/sprintf.
+    - Allow security phase to run after semantic checking.
+    """
     MAX_SEM_EDITS = 5
     sem_edits = 0
 
@@ -142,14 +151,8 @@ def _run_semantic_phase_for_gui(
             corrected, msg = _try_remove_unused_decl(working, first)
 
             if msg is None or corrected == working:
-                return {
-                    "status": "SEM_ISSUES",
-                    "working": working,
-                    "tree": tree,
-                    "listeners": listeners,
-                    "parser": parser,
-                    "semantic_issues": issues,
-                }
+                # Cannot apply semantic fix; let security phase still run.
+                break
 
             working = corrected
             steps.append(f"SEM: {msg}")
@@ -189,14 +192,9 @@ def _run_semantic_phase_for_gui(
             )
 
             if msg is None or corrected == working:
-                return {
-                    "status": "SEM_ISSUES",
-                    "working": working,
-                    "tree": tree,
-                    "listeners": listeners,
-                    "parser": parser,
-                    "semantic_issues": issues,
-                }
+                # Important: do not return yet.
+                # names like gets/strcpy/sprintf may be security-fixable.
+                break
 
             working = corrected
             steps.append(f"SEM: {msg}")
@@ -220,33 +218,19 @@ def _run_semantic_phase_for_gui(
             tree, listeners, parser = tree2, listeners2, parser2
             continue
 
-        return {
-            "status": "SEM_ISSUES",
-            "working": working,
-            "tree": tree,
-            "listeners": listeners,
-            "parser": parser,
-            "semantic_issues": issues,
-        }
+        # Other semantic issues: stop semantic auto-fixing here, but still let
+        # security phase run afterwards.
+        break
 
     issues = _collect_semantic_issues(tree)
-    if issues:
-        return {
-            "status": "SEM_ISSUES",
-            "working": working,
-            "tree": tree,
-            "listeners": listeners,
-            "parser": parser,
-            "semantic_issues": issues,
-        }
 
     return {
-        "status": "SEM_CLEAN",
+        "status": "SEM_CLEAN" if not issues else "SEM_ISSUES",
         "working": working,
         "tree": tree,
         "listeners": listeners,
         "parser": parser,
-        "semantic_issues": [],
+        "semantic_issues": issues,
     }
 
 
@@ -258,9 +242,12 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
     logs: List[str] = []
     parse_errors: List[str] = []
     semantic_issues: List[Dict[str, Any]] = []
+    security_warnings: List[str] = []
+    security_changed_lines: List[int] = []
 
     MAX_LEX_EDITS = 3
     MAX_SYN_EDITS = 5
+    MAX_SECURITY_ROUNDS = 3
 
     stats = {
         "lex_fixes": 0,
@@ -282,10 +269,13 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
         "semantic_issues": [],
         "security_warnings": [],
         "changed_lines": [],
+        "security_changed_lines": [],
         "stats": stats,
     }
 
+    # ---------------------------------------------------------
     # Phase 1: lexical cleanup
+    # ---------------------------------------------------------
     for _ in range(MAX_LEX_EDITS):
         new_src, lex_fix = fix_common_lexical_issues(working)
         if not lex_fix or new_src == working:
@@ -297,7 +287,9 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
         logs.append(f"Applied lexical fix: {lex_fix}")
         stats["lex_fixes"] += 1
 
-    # Parse after lexical cleanup
+    # ---------------------------------------------------------
+    # Initial parse after lexical cleanup
+    # ---------------------------------------------------------
     tree, listeners, parser = parse_source(working, f"{filename} (gui-after-lex)")
     if tree is None:
         result["status"] = "STOPPED"
@@ -305,12 +297,15 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
         result["applied_steps"] = steps
         result["logs"] = logs + ["Parsing stopped: tree is None after lexical phase."]
         result["changed_lines"] = _compute_changed_lines(original_source, working)
+        result["security_changed_lines"] = []
         return result
 
     if has_any_errors(listeners):
         parse_errors = get_all_error_strings(listeners)
 
+    # ---------------------------------------------------------
     # Phase 2: syntax repair loop
+    # ---------------------------------------------------------
     edits = 0
     best_error_count = len(parse_errors) if parse_errors else 0
     no_improve_rounds = 0
@@ -494,7 +489,9 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
         if not has_any_errors(listeners):
             break
 
+    # ---------------------------------------------------------
     # Final status after syntax phase
+    # ---------------------------------------------------------
     if tree is None:
         result["status"] = "STOPPED"
     elif has_any_errors(listeners):
@@ -504,57 +501,127 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
     else:
         result["status"] = "PARSE_SUCCESS"
 
-    # Semantic + security
+    # ---------------------------------------------------------
+    # Phase 3: semantic + iterative security
+    # ---------------------------------------------------------
     if tree is not None and not has_any_errors(listeners):
-        sem_result = _run_semantic_phase_for_gui(
-            filename,
-            working,
-            tree,
-            listeners,
-            parser,
-            steps,
-            logs,
-            stats,
-        )
+        security_rounds = 0
 
-        working = sem_result["working"]
-        tree = sem_result["tree"]
-        listeners = sem_result["listeners"]
-        parser = sem_result["parser"]
-        semantic_issues = sem_result.get("semantic_issues", [])
-        parse_errors = sem_result.get("parse_errors", parse_errors)
+        while True:
+            sem_result = _run_semantic_phase_for_gui(
+                filename,
+                working,
+                tree,
+                listeners,
+                parser,
+                steps,
+                logs,
+                stats,
+            )
 
-        if sem_result["status"] == "STOPPED":
-            result["status"] = "STOPPED"
-            result["success"] = False
-        elif sem_result["status"] == "SEM_ISSUES":
-            result["status"] = "SEM_ISSUES"
-            result["success"] = True
-        else:
+            working = sem_result["working"]
+            tree = sem_result["tree"]
+            listeners = sem_result["listeners"]
+            parser = sem_result["parser"]
+            semantic_issues = sem_result.get("semantic_issues", [])
+            parse_errors = sem_result.get("parse_errors", parse_errors)
+
+            if sem_result["status"] == "STOPPED":
+                result["status"] = "STOPPED"
+                result["success"] = False
+                break
+
+            # Always allow security phase to run, even if semantic issues remain.
             security_warnings = _collect_security_issues(working)
+
+            if security_warnings:
+                logs.append(f"Security issues detected: {len(security_warnings)}")
+                logs.append("Invoking SecurityAutoFixer for GUI parity with CLI.")
+
+                try:
+                    auto_fixer = SecurityAutoFixer()
+                    fix_result = auto_fixer.apply_fixes(working)
+
+                    if fix_result.source != working:
+                        changed_now = _compute_changed_lines(working, fix_result.source)
+                        security_changed_lines = sorted(set(security_changed_lines + changed_now))
+
+                        for step in fix_result.applied_steps:
+                            steps.append(step)
+                            logs.append(f"Applied security fix: {step}")
+
+                        stats["ai_fixes"] += sum(
+                            1 for s in fix_result.applied_steps if s.startswith("AISEC:")
+                        )
+
+                        working = fix_result.source
+                        security_rounds += 1
+
+                        if security_rounds > MAX_SECURITY_ROUNDS:
+                            logs.append("Stopping: exceeded maximum security reparse rounds.")
+                            result["status"] = "STOPPED"
+                            result["success"] = False
+                            break
+
+                        tree2, listeners2, parser2 = parse_source(
+                            working,
+                            f"{filename} (gui-after-security-{security_rounds})",
+                        )
+
+                        if tree2 is None or has_any_errors(listeners2):
+                            logs.append("Stopping: security fix broke parsing.")
+                            parse_errors = get_all_error_strings(listeners2) if tree2 is not None else []
+                            result["status"] = "STOPPED"
+                            result["success"] = False
+                            tree = tree2
+                            listeners = listeners2
+                            parser = parser2
+                            break
+
+                        tree, listeners, parser = tree2, listeners2, parser2
+                        continue
+
+                    logs.append("SecurityAutoFixer produced no code change.")
+                except Exception as e:
+                    logs.append(f"Security auto-fix failed: {str(e)}")
+
+            # If semantic issues remain after giving security a chance, stop here.
+            if semantic_issues:
+                result["status"] = "SEM_ISSUES"
+                result["success"] = True
+                break
+
+            # Final status after security
             final_status = _status_from_security(security_warnings)
 
             if security_warnings:
-                logs.append(f"Security warnings found: {len(security_warnings)}")
+                logs.append(f"Security warnings remaining: {len(security_warnings)}")
             else:
                 logs.append("No security warnings found.")
 
             result["status"] = final_status
-            result["security_warnings"] = security_warnings
             result["success"] = final_status in {"SUCCESS", "SUCCESS_WITH_WARNINGS"}
+            break
 
         result["semantic_issues"] = semantic_issues
+        result["security_warnings"] = security_warnings
 
     else:
         result["semantic_issues"] = []
         result["security_warnings"] = _collect_security_issues(working)
         result["success"] = False
 
+    # ---------------------------------------------------------
+    # Final payload
+    # ---------------------------------------------------------
+    changed_lines = _compute_changed_lines(original_source, working)
+
     result["corrected_code"] = working
     result["applied_steps"] = steps
     result["logs"] = logs
     result["errors"] = parse_errors
-    result["changed_lines"] = _compute_changed_lines(original_source, working)
+    result["changed_lines"] = changed_lines
+    result["security_changed_lines"] = security_changed_lines
     result["stats"] = stats
 
     return result
