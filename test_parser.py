@@ -19,6 +19,7 @@ from compiler.unused_var_fixer import remove_unused_decl_at
 from compiler.repair_logger import RepairLogger
 from compiler.symbol_table_builder import SymbolTableBuilder
 from compiler.security_engine import SecurityEngine
+from compiler.security_auto_fixer import SecurityAutoFixer
 
 try:
     from generated.SimpleCLexer import SimpleCLexer
@@ -326,8 +327,15 @@ def _print_semantic_issues(issues):
     print(f"Total semantic issues: {total}")
 
 
-def run_security_checks(source_text: str) -> bool:
+def run_security_checks(source_text: str):
+    """
+    Returns:
+        ok: bool
+        final_source: str
+        auto_steps: List[str]
+    """
     engine = SecurityEngine()
+    auto_fixer = SecurityAutoFixer()
 
     issues, blocked, categorized = engine.analyze(source_text)
 
@@ -335,21 +343,43 @@ def run_security_checks(source_text: str) -> bool:
         print("\nSECURITY ANALYSIS")
         print("------------------------------------------------")
         print("No security issues detected.")
-        return True
+        return True, source_text, []
 
     engine.print_summary(categorized)
+
+    # Try safe auto-fixes even for blocked cases first.
+    # If the fixer changes the source, allow the pipeline to continue
+    # with the repaired version. If nothing safe can be done, keep blocked.
+    fix_result = auto_fixer.apply_fixes(source_text)
+
+    if fix_result.source != source_text:
+        if blocked:
+            print("\nAUTO SECURITY FIX APPLIED (CRITICAL)")
+        else:
+            print("\nAUTO SECURITY FIX APPLIED")
+
+        print("-" * 50)
+        for step in fix_result.applied_steps:
+            print(step)
+        print("-" * 50)
+        print(fix_result.source.rstrip())
+        print("-" * 50)
+        return True, fix_result.source, fix_result.applied_steps
 
     if blocked:
         print("FINAL RESULT: BLOCKED BY SECURITY POLICY")
         print("Dangerous or exploitable code detected.")
-        return False
+        return False, source_text, []
 
     print("Security result: warnings present but allowed.")
-    return True
+    return True, source_text, []
 
 
 def _used_ai(applied_steps: List[str]) -> bool:
-    return any(step.startswith("AI:") for step in applied_steps)
+    return any(
+        step.startswith("AI:") or step.startswith("AISEC:")
+        for step in applied_steps
+    )
 
 
 def _print_ai_repair_debug(working: str, tree, parser):
@@ -450,20 +480,11 @@ def _finalize_semantic_with_security(
     _print_semantic_issues(issues)
     print("-" * 70)
 
-    if not run_security_checks(working):
-        logger.end_case(
-            status="BLOCKED_SECURITY",
-            final_source=working,
-            applied_steps=applied_steps,
-            note=f"blocked by security analysis ({note})",
-        )
-        return True
-
     logger.end_case(
         status="SEM_ISSUES",
         final_source=working,
         applied_steps=applied_steps,
-        note=f"{note}, security checked",
+        note=note,
     )
     return True
 
@@ -478,13 +499,163 @@ def _run_semantic_phase(
     logger: RepairLogger,
 ) -> bool:
     """
+    Unified iterative semantic + security phase.
+
     Returns True if the function fully handled output/finalization.
-    Returns False only if caller should continue, which normally should not happen.
     """
     MAX_SEM_EDITS = 5
-    sem_edits = 0
+    MAX_SECURITY_ROUNDS = 3
 
-    while sem_edits < MAX_SEM_EDITS:
+    sem_edits = 0
+    security_rounds = 0
+
+    while True:
+        # -----------------------------------------------------
+        # A) Semantic repair loop on the CURRENT parsed tree
+        # -----------------------------------------------------
+        while sem_edits < MAX_SEM_EDITS:
+            checker = SemanticChecker()
+            checker.visit(tree)
+            issues = checker.get_issues()
+
+            if issues:
+                logger.log_semantic_issues(issues)
+
+            if not issues:
+                break
+
+            first = issues[0]
+            kind = first.get("kind")
+
+            # 1) Auto-fix UNUSED
+            if kind == "unused":
+                name = first.get("name")
+                line = first.get("line")
+                col = first.get("col")
+
+                corrected = None
+                msg = None
+
+                try:
+                    corrected, msg = remove_unused_decl_at(working, line, col, name)
+                except TypeError:
+                    try:
+                        corrected, msg = remove_unused_decl_at(working, line, col)
+                    except TypeError:
+                        try:
+                            corrected, msg = remove_unused_decl_at(working, line, name)
+                        except Exception:
+                            corrected, msg = None, None
+                except Exception:
+                    corrected, msg = None, None
+
+                if msg is None or corrected is None or corrected == working:
+                    # Could not apply semantic auto-fix.
+                    # Let security phase still run before finalizing.
+                    break
+
+                working = corrected
+                applied_steps.append(f"SEM: {msg}")
+                logger.log_sem_step(step=msg, source_after=working)
+                sem_edits += 1
+
+                tree2, listeners2, parser2 = parse_source(working, f"{filename} (unused-removed)")
+                if tree2 is None:
+                    logger.end_case(
+                        status="STOPPED",
+                        final_source=working,
+                        applied_steps=applied_steps,
+                        note="tree None after unused fix",
+                    )
+                    return True
+
+                if has_any_errors(listeners2):
+                    print("\nStopping: unused-var fix broke parsing; refusing further edits.")
+                    logger.log_parse_errors(stage="LEX/PARSE", errors=get_all_error_strings(listeners2))
+                    logger.end_case(
+                        status="STOPPED",
+                        final_source=working,
+                        applied_steps=applied_steps,
+                        note="unused fix broke parsing",
+                    )
+                    return True
+
+                tree, listeners, parser = tree2, listeners2, parser2
+                continue
+
+            # 2) Auto-fix UNDECLARED via identifier typo correction
+            if kind == "undeclared":
+                name = first["name"]
+                line = first["line"]
+                col = first["col"]
+
+                symbols = build_symbols(tree)
+
+                corrected, msg = fix_identifier_typo_at(
+                    working,
+                    line,
+                    col,
+                    symbols,
+                    max_dist=2,
+                    expected_name=name,
+                )
+
+                if msg is None or corrected == working:
+                    try:
+                        line_text = working.splitlines()[line - 1]
+                        idx = line_text.find(name)
+                        if idx != -1:
+                            corrected, msg = fix_identifier_typo_at(
+                                working,
+                                line,
+                                idx,
+                                symbols,
+                                max_dist=2,
+                                expected_name=name,
+                            )
+                    except Exception:
+                        pass
+
+                if msg is None or corrected == working:
+                    # Important:
+                    # some undeclared identifiers like gets/strcpy/sprintf
+                    # are security-relevant library calls, so do NOT finalize yet.
+                    break
+
+                working = corrected
+                applied_steps.append(f"SYM: {msg}")
+                logger.log_sem_step(step=msg, source_after=working)
+                sem_edits += 1
+
+                tree2, listeners2, parser2 = parse_source(working, f"{filename} (sym-fixed)")
+                if tree2 is None:
+                    logger.end_case(
+                        status="STOPPED",
+                        final_source=working,
+                        applied_steps=applied_steps,
+                        note="tree None after sym fix",
+                    )
+                    return True
+
+                if has_any_errors(listeners2):
+                    print("\nStopping: semantic fix broke parsing; refusing further edits.")
+                    logger.log_parse_errors(stage="LEX/PARSE", errors=get_all_error_strings(listeners2))
+                    logger.end_case(
+                        status="STOPPED",
+                        final_source=working,
+                        applied_steps=applied_steps,
+                        note="semantic fix broke parsing",
+                    )
+                    return True
+
+                tree, listeners, parser = tree2, listeners2, parser2
+                continue
+
+            # 3) Everything else: do not auto-fix semantically here.
+            # Allow security phase to run before finalizing.
+            break
+
+        # Recompute semantic issues after the semantic-fix loop
         checker = SemanticChecker()
         checker.visit(tree)
         issues = checker.get_issues()
@@ -492,211 +663,108 @@ def _run_semantic_phase(
         if issues:
             logger.log_semantic_issues(issues)
 
-        if not issues:
-            break
+        # -----------------------------------------------------
+        # B) Security phase on the CURRENT parse
+        # -----------------------------------------------------
+        ok, sec_fixed_source, sec_steps = run_security_checks(working)
 
-        first = issues[0]
-        kind = first.get("kind")
+        if not ok:
+            logger.end_case(
+                status="BLOCKED_SECURITY",
+                final_source=working,
+                applied_steps=applied_steps,
+                note="blocked by security analysis",
+            )
+            return True
 
-        # 1) Auto-fix UNUSED
-        if kind == "unused":
-            name = first.get("name")
-            line = first.get("line")
-            col = first.get("col")
+        # Security changed the source -> iterate whole phase again
+        if sec_fixed_source != working:
+            for step in sec_steps:
+                applied_steps.append(step)
 
-            corrected = None
-            msg = None
+            working = sec_fixed_source
+            security_rounds += 1
 
-            try:
-                corrected, msg = remove_unused_decl_at(working, line, col, name)
-            except TypeError:
-                try:
-                    corrected, msg = remove_unused_decl_at(working, line, col)
-                except TypeError:
-                    try:
-                        corrected, msg = remove_unused_decl_at(working, line, name)
-                    except Exception:
-                        corrected, msg = None, None
-            except Exception:
-                corrected, msg = None, None
-
-            if msg is None or corrected is None or corrected == working:
-                return _finalize_semantic_with_security(
-                    working=working,
-                    tree=tree,
-                    parser=parser,
-                    issues=issues,
+            if security_rounds > MAX_SECURITY_ROUNDS:
+                print("\nStopping: exceeded maximum security reparse rounds.")
+                logger.end_case(
+                    status="STOPPED",
+                    final_source=working,
                     applied_steps=applied_steps,
-                    logger=logger,
-                    note="unused fix not applicable",
+                    note="exceeded security rounds",
                 )
+                return True
 
-            working = corrected
-            applied_steps.append(f"SEM: {msg}")
-            logger.log_sem_step(step=msg, source_after=working)
-            sem_edits += 1
-
-            tree2, listeners2, parser2 = parse_source(working, f"{filename} (unused-removed)")
+            tree2, listeners2, parser2 = parse_source(
+                working,
+                f"{filename} (after-security-{security_rounds})",
+            )
             if tree2 is None:
                 logger.end_case(
                     status="STOPPED",
                     final_source=working,
                     applied_steps=applied_steps,
-                    note="tree None after unused fix",
+                    note="tree None after security fix",
                 )
                 return True
 
             if has_any_errors(listeners2):
-                print("\nStopping: unused-var fix broke parsing; refusing further edits.")
+                print("\nStopping: security fix broke parsing; refusing further edits.")
                 logger.log_parse_errors(stage="LEX/PARSE", errors=get_all_error_strings(listeners2))
                 logger.end_case(
                     status="STOPPED",
                     final_source=working,
                     applied_steps=applied_steps,
-                    note="unused fix broke parsing",
+                    note="security fix broke parsing",
                 )
                 return True
 
             tree, listeners, parser = tree2, listeners2, parser2
+            sem_edits = 0
             continue
 
-        # 2) Auto-fix UNDECLARED via identifier typo correction
-        if kind == "undeclared":
-            name = first["name"]
-            line = first["line"]
-            col = first["col"]
-
-            symbols = build_symbols(tree)
-
-            corrected, msg = fix_identifier_typo_at(
-                working,
-                line,
-                col,
-                symbols,
-                max_dist=2,
-                expected_name=name,
+        # No security change.
+        # If semantic issues still remain, finalize as semantic issues.
+        if issues:
+            return _finalize_semantic_with_security(
+                working=working,
+                tree=tree,
+                parser=parser,
+                issues=issues,
+                applied_steps=applied_steps,
+                logger=logger,
+                note="issues remain after semantic/security loop",
             )
 
-            if msg is None or corrected == working:
-                try:
-                    line_text = working.splitlines()[line - 1]
-                    idx = line_text.find(name)
-                    if idx != -1:
-                        corrected, msg = fix_identifier_typo_at(
-                            working,
-                            line,
-                            idx,
-                            symbols,
-                            max_dist=2,
-                            expected_name=name,
-                        )
-                except Exception:
-                    pass
+        # Clean semantic + clean security -> final success
+        print("\nFINAL RESULT: SUCCESSFUL" + (" after repair" if applied_steps else ""))
+        print("-" * 70)
+        if applied_steps:
+            print("Applied steps:")
+            for s in applied_steps:
+                print(f"  - {s}")
+            print("-" * 70)
 
-            if msg is None or corrected == working:
-                return _finalize_semantic_with_security(
-                    working=working,
-                    tree=tree,
-                    parser=parser,
-                    issues=issues,
-                    applied_steps=applied_steps,
-                    logger=logger,
-                    note="undeclared fix not applicable",
-                )
+        if _used_ai(applied_steps):
+            _print_ai_repair_debug(working, tree, parser)
+        else:
+            print("Parse Tree:")
+            print("-" * 70)
+            print_parse_tree(tree, parser)
 
-            working = corrected
-            applied_steps.append(f"SYM: {msg}")
-            logger.log_sem_step(step=msg, source_after=working)
-            sem_edits += 1
+            print("\nS-Expression Format:")
+            print(tree.toStringTree(recog=parser))
+            print("-" * 70)
 
-            tree2, listeners2, parser2 = parse_source(working, f"{filename} (sym-fixed)")
-            if tree2 is None:
-                logger.end_case(
-                    status="STOPPED",
-                    final_source=working,
-                    applied_steps=applied_steps,
-                    note="tree None after sym fix",
-                )
-                return True
+        print_analysis(tree)
 
-            if has_any_errors(listeners2):
-                print("\nStopping: semantic fix broke parsing; refusing further edits.")
-                logger.log_parse_errors(stage="LEX/PARSE", errors=get_all_error_strings(listeners2))
-                logger.end_case(
-                    status="STOPPED",
-                    final_source=working,
-                    applied_steps=applied_steps,
-                    note="semantic fix broke parsing",
-                )
-                return True
-
-            tree, listeners, parser = tree2, listeners2, parser2
-            continue
-
-        # 3) Everything else: do NOT auto-fix
-        return _finalize_semantic_with_security(
-            working=working,
-            tree=tree,
-            parser=parser,
-            issues=issues,
-            applied_steps=applied_steps,
-            logger=logger,
-            note=f"first issue kind={kind} not auto-fixable",
-        )
-
-    checker = SemanticChecker()
-    checker.visit(tree)
-    issues = checker.get_issues()
-
-    if issues:
-        logger.log_semantic_issues(issues)
-        return _finalize_semantic_with_security(
-            working=working,
-            tree=tree,
-            parser=parser,
-            issues=issues,
-            applied_steps=applied_steps,
-            logger=logger,
-            note="issues remain after sem loop",
-        )
-
-    if not run_security_checks(working):
         logger.end_case(
-            status="BLOCKED_SECURITY",
+            status="SUCCESS",
             final_source=working,
             applied_steps=applied_steps,
-            note="blocked by security analysis",
+            note="parse+sem+security clean",
         )
         return True
-
-    print("\nFINAL RESULT: SUCCESSFUL" + (" after repair" if applied_steps else ""))
-    print("-" * 70)
-    if applied_steps:
-        print("Applied steps:")
-        for s in applied_steps:
-            print(f"  - {s}")
-        print("-" * 70)
-
-    if _used_ai(applied_steps):
-        _print_ai_repair_debug(working, tree, parser)
-    else:
-        print("Parse Tree:")
-        print("-" * 70)
-        print_parse_tree(tree, parser)
-
-        print("\nS-Expression Format:")
-        print(tree.toStringTree(recog=parser))
-        print("-" * 70)
-
-    print_analysis(tree)
-
-    logger.end_case(
-        status="SUCCESS",
-        final_source=working,
-        applied_steps=applied_steps,
-        note="parse+sem clean",
-    )
-    return True
 
 
 def test_file(filename: str):

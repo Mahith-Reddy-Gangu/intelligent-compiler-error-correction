@@ -186,14 +186,14 @@ class SecurityChecker:
                 )
 
         # ------------------------------------------------
-        # Hardcoded secrets (NEW)
+        # Hardcoded secrets
         # ------------------------------------------------
-            secret_patterns = [
+        secret_patterns = [
             r"(password|passwd|pwd)\s*=\s*\".*\"",
             r"(password|passwd|pwd)\s*=\s*\d+",
             r"(api_key|apikey|token|secret)\s*=\s*\".*\"",
             r"(api_key|apikey|token|secret)\s*=\s*\d+",
-            ]
+        ]
 
         for pattern in secret_patterns:
             if re.search(pattern, source_text, flags=re.IGNORECASE):
@@ -207,7 +207,7 @@ class SecurityChecker:
                 )
 
         # ------------------------------------------------
-        # Memory allocation tracking (NEW)
+        # Memory allocation tracking
         # ------------------------------------------------
         malloc_vars = re.findall(
             r"\b([A-Za-z_]\w*)\s*=\s*(malloc|calloc|realloc)\s*\(",
@@ -226,7 +226,7 @@ class SecurityChecker:
                 )
 
         # ------------------------------------------------
-        # Double free (NEW)
+        # Double free
         # ------------------------------------------------
         free_matches = re.findall(
             r"\bfree\s*\(\s*([A-Za-z_]\w*)\s*\)",
@@ -245,7 +245,7 @@ class SecurityChecker:
                 )
 
         # ------------------------------------------------
-        # Use-after-free (NEW)
+        # Use-after-free (heuristic)
         # ------------------------------------------------
         for var in set(free_matches):
             if re.search(rf"\bfree\s*\(\s*{var}\s*\).*{var}", source_text, flags=re.DOTALL):
@@ -257,5 +257,24 @@ class SecurityChecker:
                         score=5,
                     )
                 )
+
+        # ------------------------------------------------
+        # Format string vulnerability
+        # printf(user_input)
+        # ------------------------------------------------
+        format_string_matches = re.findall(
+            r"\bprintf\s*\(\s*([A-Za-z_]\w*)\s*\)",
+            source_text,
+        )
+
+        for var in format_string_matches:
+            issues.append(
+                SecurityIssue(
+                    severity="WARNING",
+                    message=f"Potential format string vulnerability using variable '{var}'",
+                    suggestion='Use printf("%s", variable) instead of printf(variable).',
+                    score=3,
+                )
+            )
 
         return issues

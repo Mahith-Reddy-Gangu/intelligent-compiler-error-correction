@@ -618,7 +618,18 @@ class SemanticChecker(_VISITOR_BASE):
         line, col = _tok_line_col(node)
 
         # hard allowlist for builtin/library functions
-        if name in {"printf", "scanf"}:
+        # hard allowlist for builtin/library functions & keywords
+        if name in {
+            "printf",
+            "scanf",
+            "fgets",
+            "snprintf",
+            "vsnprintf",
+            "strncpy",
+            "strncat",
+            "sizeof",
+            "stdin",
+        }:
             return None
 
         decl = self._lookup(name)

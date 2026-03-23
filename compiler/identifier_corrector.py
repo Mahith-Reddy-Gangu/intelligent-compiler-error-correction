@@ -227,6 +227,40 @@ def fix_identifier_typo_at(
     - If you already know the undeclared identifier text (e.g., from checker), pass it here.
       We will try to target that exact identifier occurrence on the line.
     """
+
+    # Do NOT auto-correct known stdlib / security-sensitive function names.
+    # These may legitimately be undeclared in this subset grammar but must be
+    # preserved so that security analysis and auto-fix can see them.
+    PROTECTED_IDENTIFIERS = {
+        "printf",
+        "scanf",
+        "gets",
+        "fgets",
+        "strcpy",
+        "strncpy",
+        "strcat",
+        "strncat",
+        "sprintf",
+        "snprintf",
+        "vsprintf",
+        "vsnprintf",
+        "system",
+        "popen",
+        "execl",
+        "execv",
+        "execvp",
+        "execve",
+        "WinExec",
+        "ShellExecute",
+        "CreateProcess",
+        "malloc",
+        "calloc",
+        "realloc",
+        "free",
+        "getenv",
+        "open",
+    }
+
     if not symbols:
         return src, None
 
@@ -247,6 +281,10 @@ def fix_identifier_typo_at(
 
     start_in_line, end_in_line, word = span
 
+    # Do not "fix" protected identifiers
+    if word in PROTECTED_IDENTIFIERS:
+        return src, None
+
     # If the identifier is already declared, no fix needed
     if word in symbols:
         return src, None
@@ -256,8 +294,11 @@ def fix_identifier_typo_at(
     if best is None:
         return src, None
 
+    # Never rewrite TO a protected identifier either
+    if best in PROTECTED_IDENTIFIERS:
+        return src, None
+
     # Optional safety: declared-before-use (best-effort)
-    # If symbol info has 'line', and it's after the use line, don't fix.
     info = symbols.get(best, {})
     decl_line = info.get("line")
     if isinstance(decl_line, int) and decl_line > 0:
