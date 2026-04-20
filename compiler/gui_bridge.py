@@ -1,4 +1,5 @@
 from typing import Dict, Any, List, Optional
+import time
 
 from compiler.error_classifier import classify_error_message
 from compiler.error_corrector import apply_correction
@@ -11,6 +12,8 @@ from compiler.taint_checker import TaintChecker
 from compiler.string_flow_checker import StringFlowChecker
 from compiler.unused_var_fixer import remove_unused_decl_at
 from compiler.security_auto_fixer import SecurityAutoFixer
+from compiler.green_energy import GreenEnergyTracker
+from compiler.green_system import GreenSystemTracker
 
 from test_parser import (
     parse_source,
@@ -21,6 +24,108 @@ from test_parser import (
     DETERMINISTIC_REASONS,
     _select_best_ai_candidate_by_reparse,
 )
+
+# ---------------------------------------------------------
+# Optional green modules
+# Safe fallback if the files are not created yet
+# ---------------------------------------------------------
+try:
+    from compiler.green_metrics import GreenMetrics  # type: ignore
+except Exception:
+    class GreenMetrics:
+        def __init__(self):
+            self._starts = {}
+            self._phase_ms = {}
+            self._counters = {}
+            self._values = {}
+
+        def start(self, phase: str) -> None:
+            self._starts[phase] = time.perf_counter()
+
+        def end(self, phase: str) -> None:
+            started = self._starts.get(phase)
+            if started is None:
+                return
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            self._phase_ms[phase] = self._phase_ms.get(phase, 0.0) + elapsed_ms
+            del self._starts[phase]
+
+        def inc(self, key: str, value: int = 1) -> None:
+            self._counters[key] = self._counters.get(key, 0) + value
+
+        def set(self, key: str, value: Any) -> None:
+            self._values[key] = value
+
+        def to_dict(self) -> Dict[str, Any]:
+            total_ms = sum(self._phase_ms.values())
+            return {
+                "total_runtime_ms": round(total_ms, 2),
+                "phase_ms": {k: round(v, 2) for k, v in self._phase_ms.items()},
+                "counters": dict(self._counters),
+                "values": dict(self._values),
+            }
+
+
+try:
+    from compiler.green_scorer import build_green_report  # type: ignore
+except Exception:
+    def build_green_report(metrics: Dict[str, Any]) -> Dict[str, Any]:
+        phase_ms = metrics.get("phase_ms", {})
+        counters = metrics.get("counters", {})
+        values = metrics.get("values", {})
+
+        score = 100
+        total_ms = metrics.get("total_runtime_ms", 0.0)
+
+        score -= min(int(total_ms / 80), 30)
+        score -= min(counters.get("ai_fixes", 0) * 4, 20)
+        score -= min(counters.get("rule_fixes", 0) * 2, 10)
+        score -= min(counters.get("lex_fixes", 0), 5)
+        score -= min(values.get("semantic_issue_count", 0) * 3, 15)
+
+        if values.get("parse_success"):
+            score += 5
+
+        if values.get("status") == "STOPPED":
+            score -= 15
+        elif values.get("status") == "UNFIXABLE":
+            score -= 10
+
+        score = max(0, min(100, score))
+
+        hotspot = "overall pipeline"
+        hotspot_time = -1.0
+        for name, ms in phase_ms.items():
+            if ms > hotspot_time:
+                hotspot = name
+                hotspot_time = ms
+
+        suggestion = "Pipeline looks efficient."
+        if counters.get("ai_fixes", 0) >= 4:
+            suggestion = "Reduce repeated AI fallback by improving deterministic fixes and early stopping."
+        elif hotspot == "syntax_repair":
+            suggestion = "Syntax repair dominates runtime; add stronger sync-point recovery and candidate pruning."
+        elif hotspot == "semantic_phase":
+            suggestion = "Semantic checking dominates runtime; consider lightweight pre-checks before full analysis."
+        elif hotspot == "security_phase":
+            suggestion = "Security phase dominates runtime; run targeted checks only after parse success."
+        elif values.get("semantic_issue_count", 0) > 0:
+            suggestion = "Reduce downstream semantic issues by improving identifier and declaration fixes earlier."
+
+        return {
+            **metrics,
+            "green_score": score,
+            "hotspot": hotspot,
+            "suggestion": suggestion,
+        }
+
+
+try:
+    from compiler.green_logger import GreenLogger  # type: ignore
+except Exception:
+    class GreenLogger:
+        def log_run(self, payload: Dict[str, Any]) -> None:
+            return
 
 
 def _compute_changed_lines(old_text: str, new_text: str) -> List[int]:
@@ -126,17 +231,13 @@ def _run_semantic_phase_for_gui(
     steps: List[str],
     logs: List[str],
     stats: Dict[str, int],
+    green: Optional[GreenMetrics] = None,
 ):
-    """
-    GUI version of the unified iterative semantic phase.
-
-    Important design choice:
-    - Do NOT stop immediately on undeclared identifiers that may actually be
-      security-relevant library calls like gets/strcpy/sprintf.
-    - Allow security phase to run after semantic checking.
-    """
     MAX_SEM_EDITS = 5
     sem_edits = 0
+
+    if green is not None:
+        green.start("semantic_phase")
 
     while sem_edits < MAX_SEM_EDITS:
         issues = _collect_semantic_issues(tree)
@@ -151,7 +252,6 @@ def _run_semantic_phase_for_gui(
             corrected, msg = _try_remove_unused_decl(working, first)
 
             if msg is None or corrected == working:
-                # Cannot apply semantic fix; let security phase still run.
                 break
 
             working = corrected
@@ -160,9 +260,14 @@ def _run_semantic_phase_for_gui(
             stats["sem_fixes"] = stats.get("sem_fixes", 0) + 1
             sem_edits += 1
 
+            if green is not None:
+                green.inc("sem_fixes")
+
             tree2, listeners2, parser2 = parse_source(working, f"{filename} (unused-removed)")
             if tree2 is None or has_any_errors(listeners2):
                 remaining = get_all_error_strings(listeners2) if tree2 is not None else []
+                if green is not None:
+                    green.end("semantic_phase")
                 return {
                     "status": "STOPPED",
                     "working": working,
@@ -192,8 +297,6 @@ def _run_semantic_phase_for_gui(
             )
 
             if msg is None or corrected == working:
-                # Important: do not return yet.
-                # names like gets/strcpy/sprintf may be security-fixable.
                 break
 
             working = corrected
@@ -202,9 +305,14 @@ def _run_semantic_phase_for_gui(
             stats["sem_fixes"] = stats.get("sem_fixes", 0) + 1
             sem_edits += 1
 
+            if green is not None:
+                green.inc("sem_fixes")
+
             tree2, listeners2, parser2 = parse_source(working, f"{filename} (sym-fixed-sem)")
             if tree2 is None or has_any_errors(listeners2):
                 remaining = get_all_error_strings(listeners2) if tree2 is not None else []
+                if green is not None:
+                    green.end("semantic_phase")
                 return {
                     "status": "STOPPED",
                     "working": working,
@@ -218,11 +326,12 @@ def _run_semantic_phase_for_gui(
             tree, listeners, parser = tree2, listeners2, parser2
             continue
 
-        # Other semantic issues: stop semantic auto-fixing here, but still let
-        # security phase run afterwards.
         break
 
     issues = _collect_semantic_issues(tree)
+
+    if green is not None:
+        green.end("semantic_phase")
 
     return {
         "status": "SEM_CLEAN" if not issues else "SEM_ISSUES",
@@ -232,6 +341,309 @@ def _run_semantic_phase_for_gui(
         "parser": parser,
         "semantic_issues": issues,
     }
+
+
+def _emit_progress(
+    kind: str,
+    message: str,
+    working: str,
+    steps: List[str],
+    stats: Dict[str, int],
+    status: str = "RUNNING",
+) -> Dict[str, Any]:
+    total_done = (
+        stats.get("lex_fixes", 0)
+        + stats.get("rule_fixes", 0)
+        + stats.get("ai_fixes", 0)
+        + stats.get("sym_fixes", 0)
+        + stats.get("sem_fixes", 0)
+    )
+
+    return {
+        "type": kind,
+        "status": status,
+        "message": message,
+        "corrected_code": working,
+        "applied_steps": steps[:],
+        "stats": dict(stats),
+        "total_repairs": total_done,
+    }
+
+
+def _finalize_green_report(
+    green: GreenMetrics,
+    filename: str,
+    result: Dict[str, Any],
+) -> None:
+    green.set("status", result.get("status"))
+    green.set("parse_success", result.get("status") not in {"STOPPED", "UNFIXABLE"})
+    green.set("semantic_issue_count", len(result.get("semantic_issues", [])))
+    green.set("security_warning_count", len(result.get("security_warnings", [])))
+
+    metrics = green.to_dict()
+    result["green_report"] = build_green_report(metrics)
+
+    try:
+        logger = GreenLogger()
+        logger.log_run({
+            "filename": filename,
+            "status": result.get("status"),
+            "green_report": result["green_report"],
+            "stats": result.get("stats", {}),
+        })
+    except Exception:
+        pass
+
+
+def repair_source_for_gui_stream(source_text: str, filename: str = "main.c"):
+    original_source = source_text
+    working = source_text
+
+    steps: List[str] = []
+    logs: List[str] = []
+    parse_errors: List[str] = []
+    semantic_issues: List[Dict[str, Any]] = []
+    security_warnings: List[str] = []
+    security_changed_lines: List[int] = []
+
+    MAX_LEX_EDITS = 5
+    MAX_SYN_EDITS = 120
+    NO_IMPROVE_LIMIT = 8
+    REPEAT_LIMIT = 6
+
+    stats = {
+        "lex_fixes": 0,
+        "rule_fixes": 0,
+        "ai_fixes": 0,
+        "sym_fixes": 0,
+        "sem_fixes": 0,
+        "iterations": 0,
+    }
+
+    yield _emit_progress("start", f"Started repairing {filename}", working, steps, stats)
+
+    green = GreenMetrics()
+
+    energy = GreenEnergyTracker()
+    system = GreenSystemTracker()
+
+    energy.start()
+    system.start()
+
+    green.start("total")
+    green.start("lexical_phase")
+
+    for _ in range(MAX_LEX_EDITS):
+        new_src, lex_fix = fix_common_lexical_issues(working)
+        if not lex_fix or new_src == working:
+            break
+
+        working = new_src
+        step_msg = f"LEX: {lex_fix}"
+        steps.append(step_msg)
+        logs.append(f"Applied lexical fix: {lex_fix}")
+        stats["lex_fixes"] += 1
+        green.inc("lex_fixes")
+
+        yield _emit_progress("fix", step_msg, working, steps, stats)
+
+    green.end("lexical_phase")
+    green.start("initial_parse")
+
+    tree, listeners, parser = parse_source(working, f"{filename} (gui-after-lex)")
+
+    green.end("initial_parse")
+
+    if tree is None:
+        green.end("total")
+        final_payload = {
+            "type": "done",
+            "status": "STOPPED",
+            "message": "Parsing stopped after lexical phase.",
+            "corrected_code": working,
+            "applied_steps": steps,
+            "stats": stats,
+            "logs": logs,
+            "errors": parse_errors,
+            "semantic_issues": [],
+            "security_warnings": [],
+            "changed_lines": _compute_changed_lines(original_source, working),
+            "security_changed_lines": [],
+            "success": False,
+        }
+        _finalize_green_report(green, filename, final_payload)
+        yield final_payload
+        return
+
+    edits = 0
+    parse_errors = get_all_error_strings(listeners) if has_any_errors(listeners) else []
+    best_error_count = len(parse_errors)
+    no_improve_rounds = 0
+    last_sig = None
+    repeat = 0
+
+    green.start("syntax_repair")
+
+    while has_any_errors(listeners) and edits < MAX_SYN_EDITS:
+        stats["iterations"] += 1
+        errs = get_all_error_strings(listeners)
+        parse_errors = errs[:]
+
+        error_obj = get_first_error_object(listeners)
+        if not error_obj:
+            break
+
+        msg = error_obj["msg"]
+        line = error_obj["line"]
+        col = error_obj["column"]
+        stage = error_obj.get("stage", "?")
+        off = error_obj.get("offending")
+
+        classification = classify_error_message(msg)
+
+        yield _emit_progress(
+            "detect",
+            f"Detected {classification.reason} at line {line}",
+            working,
+            steps,
+            stats,
+        )
+
+        sig = (stage, line, col, classification.reason, msg)
+        if sig == last_sig:
+            repeat += 1
+        else:
+            repeat = 0
+        last_sig = sig
+
+        if repeat >= REPEAT_LIMIT:
+            break
+
+        symbols = build_symbols(tree)
+
+        if off and isinstance(off, str):
+            import re
+            if re.match(r"^[A-Za-z_][A-Za-z_0-9]*$", off):
+                corrected, msg2 = fix_identifier_typo_at(working, line, col, symbols, max_dist=2)
+                if msg2 is not None and corrected != working:
+                    working = corrected
+                    steps.append(f"SYM: {msg2}")
+                    stats["sym_fixes"] += 1
+                    green.inc("sym_fixes")
+                    edits += 1
+
+                    yield _emit_progress("fix", f"SYM: {msg2}", working, steps, stats)
+
+                    tree, listeners, parser = parse_source(working, f"{filename} (gui-sym-fixed)")
+                    if tree is None:
+                        break
+
+                    cur_error_count = len(get_all_error_strings(listeners))
+                    if cur_error_count < best_error_count:
+                        best_error_count = cur_error_count
+                        no_improve_rounds = 0
+                    else:
+                        no_improve_rounds += 1
+
+                    if no_improve_rounds >= NO_IMPROVE_LIMIT:
+                        break
+
+                    if not has_any_errors(listeners):
+                        break
+                    continue
+
+        if stage == "LEX":
+            candidates = ai_generate_patch_candidates(
+                working, line, col, reason=classification.reason, top_k=5, debug=False
+            )
+
+            ai_src, cmd, tree2, listeners2, parser2 = _select_best_ai_candidate_by_reparse(
+                filename, working, candidates
+            )
+
+            if cmd is None or ai_src == working or tree2 is None:
+                break
+
+            working = ai_src
+            steps.append(f"AI: {cmd}")
+            stats["ai_fixes"] += 1
+            green.inc("ai_fixes")
+            edits += 1
+            tree, listeners, parser = tree2, listeners2, parser2
+
+            yield _emit_progress("fix", f"AI: {cmd}", working, steps, stats)
+
+        else:
+            deterministic_attempted = False
+            deterministic_changed = False
+
+            if classification.reason in DETERMINISTIC_REASONS:
+                deterministic_attempted = True
+                corrected, applied = apply_correction(working, line, col, classification)
+
+                if applied is not None and corrected != working:
+                    deterministic_changed = True
+                    working = corrected
+                    steps.append(f"RULE: {applied}")
+                    stats["rule_fixes"] += 1
+                    green.inc("rule_fixes")
+                    edits += 1
+
+                    tree, listeners, parser = parse_source(working, f"{filename} (gui-rule-fixed)")
+                    if tree is None:
+                        break
+
+                    yield _emit_progress("fix", f"RULE: {applied}", working, steps, stats)
+
+            if has_any_errors(listeners):
+                if classification.reason not in DETERMINISTIC_REASONS or (
+                    deterministic_attempted and not deterministic_changed
+                ):
+                    candidates = ai_generate_patch_candidates(
+                        working, line, col, reason=classification.reason, top_k=5, debug=False
+                    )
+
+                    ai_src, cmd, tree2, listeners2, parser2 = _select_best_ai_candidate_by_reparse(
+                        filename, working, candidates
+                    )
+
+                    if cmd is None or ai_src == working or tree2 is None:
+                        break
+
+                    working = ai_src
+                    steps.append(f"AI: {cmd}")
+                    stats["ai_fixes"] += 1
+                    green.inc("ai_fixes")
+                    edits += 1
+                    tree, listeners, parser = tree2, listeners2, parser2
+
+                    yield _emit_progress("fix", f"AI: {cmd}", working, steps, stats)
+
+        cur_error_count = len(get_all_error_strings(listeners))
+        if cur_error_count < best_error_count:
+            best_error_count = cur_error_count
+            no_improve_rounds = 0
+        else:
+            no_improve_rounds += 1
+
+        if no_improve_rounds >= NO_IMPROVE_LIMIT:
+            break
+
+        if not has_any_errors(listeners):
+            break
+
+    green.end("syntax_repair")
+
+    final_result = repair_source_for_gui(working, filename)
+    final_result["type"] = "done"
+    final_result["total_repairs"] = (
+        final_result["stats"].get("lex_fixes", 0)
+        + final_result["stats"].get("rule_fixes", 0)
+        + final_result["stats"].get("ai_fixes", 0)
+        + final_result["stats"].get("sym_fixes", 0)
+        + final_result["stats"].get("sem_fixes", 0)
+    )
+    yield final_result
 
 
 def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[str, Any]:
@@ -245,9 +657,11 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
     security_warnings: List[str] = []
     security_changed_lines: List[int] = []
 
-    MAX_LEX_EDITS = 3
-    MAX_SYN_EDITS = 5
-    MAX_SECURITY_ROUNDS = 3
+    MAX_LEX_EDITS = 5
+    MAX_SYN_EDITS = 120
+    MAX_SECURITY_ROUNDS = 5
+    NO_IMPROVE_LIMIT = 8
+    REPEAT_LIMIT = 6
 
     stats = {
         "lex_fixes": 0,
@@ -257,6 +671,16 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
         "sem_fixes": 0,
         "iterations": 0,
     }
+
+    green = GreenMetrics()
+
+    energy = GreenEnergyTracker()
+    system = GreenSystemTracker()
+
+    energy.start()
+    system.start()
+
+    green.start("total")
 
     result: Dict[str, Any] = {
         "success": False,
@@ -271,11 +695,14 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
         "changed_lines": [],
         "security_changed_lines": [],
         "stats": stats,
+        "green_report": {},
     }
 
     # ---------------------------------------------------------
     # Phase 1: lexical cleanup
     # ---------------------------------------------------------
+    green.start("lexical_phase")
+
     for _ in range(MAX_LEX_EDITS):
         new_src, lex_fix = fix_common_lexical_issues(working)
         if not lex_fix or new_src == working:
@@ -286,11 +713,17 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
         steps.append(step_msg)
         logs.append(f"Applied lexical fix: {lex_fix}")
         stats["lex_fixes"] += 1
+        green.inc("lex_fixes")
+
+    green.end("lexical_phase")
 
     # ---------------------------------------------------------
     # Initial parse after lexical cleanup
     # ---------------------------------------------------------
+    green.start("initial_parse")
     tree, listeners, parser = parse_source(working, f"{filename} (gui-after-lex)")
+    green.end("initial_parse")
+
     if tree is None:
         result["status"] = "STOPPED"
         result["corrected_code"] = working
@@ -298,6 +731,8 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
         result["logs"] = logs + ["Parsing stopped: tree is None after lexical phase."]
         result["changed_lines"] = _compute_changed_lines(original_source, working)
         result["security_changed_lines"] = []
+        green.end("total")
+        _finalize_green_report(green, filename, result)
         return result
 
     if has_any_errors(listeners):
@@ -311,6 +746,8 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
     no_improve_rounds = 0
     last_sig = None
     repeat = 0
+
+    green.start("syntax_repair")
 
     while has_any_errors(listeners) and edits < MAX_SYN_EDITS:
         stats["iterations"] += 1
@@ -344,14 +781,13 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
             repeat = 0
         last_sig = sig
 
-        if repeat >= 2:
+        if repeat >= REPEAT_LIMIT:
             logs.append("Stopping: repeating same error (stuck).")
             result["status"] = "STOPPED"
             break
 
         symbols = build_symbols(tree)
 
-        # Optional symbol typo correction
         if off and isinstance(off, str):
             import re
             if re.match(r"^[A-Za-z_][A-Za-z_0-9]*$", off):
@@ -361,6 +797,7 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
                     steps.append(f"SYM: {msg2}")
                     logs.append(f"Applied symbol fix: {msg2}")
                     stats["sym_fixes"] += 1
+                    green.inc("sym_fixes")
                     edits += 1
 
                     tree, listeners, parser = parse_source(working, f"{filename} (gui-sym-fixed)")
@@ -375,7 +812,7 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
                     else:
                         no_improve_rounds += 1
 
-                    if no_improve_rounds >= 2:
+                    if no_improve_rounds >= NO_IMPROVE_LIMIT:
                         logs.append("Stopping: not improving error count (stuck).")
                         result["status"] = "STOPPED"
                         break
@@ -385,7 +822,6 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
 
                     continue
 
-        # Lexer-stage -> AI fallback
         if stage == "LEX":
             logs.append("Lexer-stage error remains; invoking AI patch candidates.")
 
@@ -413,6 +849,7 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
             steps.append(f"AI: {cmd}")
             logs.append(f"Applied AI patch: {cmd}")
             stats["ai_fixes"] += 1
+            green.inc("ai_fixes")
             edits += 1
 
             tree, listeners, parser = tree2, listeners2, parser2
@@ -431,6 +868,7 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
                     steps.append(f"RULE: {applied}")
                     logs.append(f"Applied deterministic fix: {applied}")
                     stats["rule_fixes"] += 1
+                    green.inc("rule_fixes")
                     edits += 1
 
                     tree, listeners, parser = parse_source(working, f"{filename} (gui-rule-fixed)")
@@ -470,6 +908,7 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
                     steps.append(f"AI: {cmd}")
                     logs.append(f"Applied AI patch: {cmd}")
                     stats["ai_fixes"] += 1
+                    green.inc("ai_fixes")
                     edits += 1
 
                     tree, listeners, parser = tree2, listeners2, parser2
@@ -481,13 +920,15 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
         else:
             no_improve_rounds += 1
 
-        if no_improve_rounds >= 2:
+        if no_improve_rounds >= NO_IMPROVE_LIMIT:
             logs.append("Stopping: not improving error count (stuck).")
             result["status"] = "STOPPED"
             break
 
         if not has_any_errors(listeners):
             break
+
+    green.end("syntax_repair")
 
     # ---------------------------------------------------------
     # Final status after syntax phase
@@ -517,6 +958,7 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
                 steps,
                 logs,
                 stats,
+                green=green,
             )
 
             working = sem_result["working"]
@@ -531,7 +973,7 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
                 result["success"] = False
                 break
 
-            # Always allow security phase to run, even if semantic issues remain.
+            green.start("security_phase")
             security_warnings = _collect_security_issues(working)
 
             if security_warnings:
@@ -550,14 +992,16 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
                             steps.append(step)
                             logs.append(f"Applied security fix: {step}")
 
-                        stats["ai_fixes"] += sum(
-                            1 for s in fix_result.applied_steps if s.startswith("AISEC:")
-                        )
+                        ai_sec_count = sum(1 for s in fix_result.applied_steps if s.startswith("AISEC:"))
+                        stats["ai_fixes"] += ai_sec_count
+                        if ai_sec_count > 0:
+                            green.inc("ai_fixes", ai_sec_count)
 
                         working = fix_result.source
                         security_rounds += 1
 
                         if security_rounds > MAX_SECURITY_ROUNDS:
+                            green.end("security_phase")
                             logs.append("Stopping: exceeded maximum security reparse rounds.")
                             result["status"] = "STOPPED"
                             result["success"] = False
@@ -569,6 +1013,7 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
                         )
 
                         if tree2 is None or has_any_errors(listeners2):
+                            green.end("security_phase")
                             logs.append("Stopping: security fix broke parsing.")
                             parse_errors = get_all_error_strings(listeners2) if tree2 is not None else []
                             result["status"] = "STOPPED"
@@ -579,19 +1024,20 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
                             break
 
                         tree, listeners, parser = tree2, listeners2, parser2
+                        green.end("security_phase")
                         continue
 
                     logs.append("SecurityAutoFixer produced no code change.")
                 except Exception as e:
                     logs.append(f"Security auto-fix failed: {str(e)}")
 
-            # If semantic issues remain after giving security a chance, stop here.
+            green.end("security_phase")
+
             if semantic_issues:
                 result["status"] = "SEM_ISSUES"
                 result["success"] = True
                 break
 
-            # Final status after security
             final_status = _status_from_security(security_warnings)
 
             if security_warnings:
@@ -623,5 +1069,21 @@ def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[st
     result["changed_lines"] = changed_lines
     result["security_changed_lines"] = security_changed_lines
     result["stats"] = stats
+    result["total_applied_steps"] = len(steps)
+    logs.append(f"Total applied steps: {len(steps)}")
+
+    green.end("total")
+
+    system.sample()
+    sys_stats = system.stop()
+    energy_stats = energy.stop()
+
+    for k, v in sys_stats.items():
+        green.set(k, v)
+
+    for k, v in energy_stats.items():
+        green.set(k, v)
+
+    _finalize_green_report(green, filename, result)
 
     return result

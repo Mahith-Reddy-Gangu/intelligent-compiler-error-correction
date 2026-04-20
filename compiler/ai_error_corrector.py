@@ -19,6 +19,18 @@ ADAPTER_DIR = os.getenv("CD_PATCH_ADAPTER_DIR", "models/codet5_patch_adapter")
 MAX_SOURCE_LEN = 256
 MAX_NEW_TOKENS = 16
 
+SAFE_TOKEN_INSERTS = {";", ")", "(", "}", "]", ","}
+RELAXED_FAMILIES = {
+    "missing_comma_args",
+    "missing_comma_params",
+    "missing_rparen",
+    "missing_lparen_general",
+    "mismatch_lparen_to_lbrack",
+    "mismatch_rparen_to_rbrack",
+    "no_viable_alternative",
+    "mismatched_token",
+}
+
 _TOKENIZER = None
 _MODEL = None
 _DEVICE = None
@@ -53,7 +65,17 @@ class PatchCommand:
     end_col: Optional[int] = None    # optional future use
 
     mode: str = "ABS"                # "ABS" or "LC"
-
+SAFE_TOKEN_INSERTS = {";", ")", "(", "}", "]", ","}
+RELAXED_FAMILIES = {
+    "missing_comma_args",
+    "missing_comma_params",
+    "missing_rparen",
+    "missing_lparen_general",
+    "mismatch_lparen_to_lbrack",
+    "mismatch_rparen_to_rbrack",
+    "no_viable_alternative",
+    "mismatched_token",
+}
 
 def _get_device() -> str:
     return "cuda" if torch.cuda.is_available() else "cpu"
@@ -590,134 +612,85 @@ def _family_compatible(
     error_col: int,
 ) -> bool:
     """
-    Reject repairs that are syntactically valid but clearly wrong for the family.
+    Relaxed compatibility:
+    - keep strict checks for obvious safe deterministic families
+    - allow likely syntax-token insertions through for ambiguous families
     """
+
     before_line = _get_line_text(source_before, error_line)
     after_line = _get_line_text(source_after, error_line)
-    
-    # illegal char => prefer delete/replace around offending weird char
+    payload = (patch.payload or "").strip()
+
+    # ----------------------------------------------------------
+    # universal relaxed escape hatch for common syntax tokens
+    # ----------------------------------------------------------
+    if patch.op == "INS" and payload in SAFE_TOKEN_INSERTS:
+        if family in RELAXED_FAMILIES:
+            return True
+
+    # illegal char => prefer delete/replace
     if family == "illegal_char":
         return patch.op in {"DEL", "REP"}
 
-    # missing semicolon => patch should introduce ';'
     if family == "missing_semicolon":
-        if patch.op == "INS" and patch.payload == ";":
-            return True
-        if patch.op == "REP" and patch.payload and ";" in patch.payload:
-            return True
-        return False
+        return (patch.op in {"INS", "REP"}) and payload == ";"
 
-    # missing_lbrace => prefer '{'
     if family == "missing_lbrace":
-        if patch.op == "INS" and patch.payload == "{":
-            return True
-        if patch.op == "REP" and patch.payload == "{":
-            return True
-        return False
+        return (patch.op in {"INS", "REP"}) and payload == "{"
 
-    # missing_rparen => prefer ')'
+    if family == "missing_rbrace":
+        return (patch.op in {"INS", "REP"}) and payload == "}"
+
     if family == "missing_rparen":
-        if patch.op == "INS" and patch.payload == ")":
+        if (patch.op in {"INS", "REP"}) and payload == ")":
             return True
-        if patch.op == "REP" and patch.payload == ")":
+        # allow comma too because parser often misroutes comma-arg problems here
+        if (patch.op in {"INS", "REP"}) and payload == ",":
             return True
         return False
 
-    # mismatch_lparen_to_lbrack:
-    # line looks like: ident[ ... )
-    # desired direction is [ -> (
-    if family == "mismatch_lparen_to_lbrack":
-        if "[" not in before_line or ")" not in before_line:
-            return True
-
-        if "[" in after_line and ")" in after_line:
-            return False
-
-        if patch.op == "INS" and patch.payload == "(":
-            return True
-        if patch.op == "REP" and patch.payload == "(":
-            return True
-
-        return False
-
-    # mismatch_rparen_to_rbrack:
-    # line looks like: ident( ... ]
-    # desired direction is ] -> )
-    if family == "mismatch_rparen_to_rbrack":
-        if "(" not in before_line or "]" not in before_line:
-            return True
-
-        if "(" in after_line and "]" in after_line:
-            return False
-
-        if patch.op == "INS" and patch.payload == ")":
-            return True
-        if patch.op == "REP" and patch.payload == ")":
-            return True
-
-        return False
-
-    # missing_lparen_general => prefer '(' insertion/replacement
     if family == "missing_lparen_general":
-        if patch.op == "INS" and patch.payload == "(":
+        if (patch.op in {"INS", "REP"}) and payload == "(":
             return True
-        if patch.op == "REP" and patch.payload == "(":
+        # allow comma here too for ambiguity cases
+        if (patch.op in {"INS", "REP"}) and payload == ",":
             return True
         return False
 
-    # extra operator: prefer deleting/replacing the bad operator
+    if family == "missing_comma_params":
+        return (patch.op in {"INS", "REP"}) and payload == ","
+
+    if family == "missing_comma_args":
+        return (patch.op in {"INS", "REP"}) and payload == ","
+
+    if family == "mismatch_lparen_to_lbrack":
+        # before this was too strict and blocked comma repairs
+        if (patch.op in {"INS", "REP"}) and payload in {"(", ","}:
+            return True
+        return patch.op in {"DEL", "REP"}
+
+    if family == "mismatch_rparen_to_rbrack":
+        if (patch.op in {"INS", "REP"}) and payload in {")", ","}:
+            return True
+        return patch.op in {"DEL", "REP"}
+
     if family == "extra_operator":
         return patch.op in {"DEL", "REP"}
 
-    # missing operand: reject junk like }, ;, )
     if family == "missing_operand":
-        if patch.op == "INS" and patch.payload is not None:
-            payload = patch.payload.strip()
-
-            if payload in {";", "{", "}", ")", "]", ","}:
-                return False
-
-            if re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*", payload):
-                return True
-            if re.fullmatch(r"\d+", payload):
-                return True
-            if payload in {"0", "1", "-1", "true", "false"}:
-                return True
-            if payload in {"(", "+", "-", "!", "'a'", '"x"'}:
-                return True
-
-            return False
-
-        if patch.op == "REP" and patch.payload is not None:
-            payload = patch.payload.strip()
-            if payload in {";", "{", "}", ")", "]", ","}:
+        if patch.op == "INS":
+            if payload in {";", "{", "}", ")", "]"}:
                 return False
             return True
-
+        if patch.op == "REP":
+            if payload in {";", "{", "}", ")", "]"}:
+                return False
+            return True
         return False
 
-    # broken logical operator: prefer && or ||
     if family == "broken_logical_operator":
-        if patch.op == "REP" and patch.payload in {"&&", "||"}:
-            return True
-        if patch.op == "INS" and patch.payload in {"&", "|"}:
-            return True
-        return False
-    if family == "missing_comma_params":
-        if patch.op == "INS" and patch.payload == ",":
-            return True
-        if patch.op == "REP" and patch.payload == ",":
-            return True
-        return False
+        return (patch.op == "REP" and payload in {"&&", "||"}) or (patch.op == "INS" and payload in {"&", "|"})
 
-    if family == "missing_comma_args":
-        if patch.op == "INS" and patch.payload == ",":
-            return True
-        if patch.op == "REP" and patch.payload == ",":
-            return True
-        return False
-
-    # unknown/generic: allow
     return True
 
 
@@ -812,12 +785,16 @@ def _score_candidate(
         elif payload in {"and", "or"}:
             score -= 10
     elif family == "missing_comma_params":
-        if patch.payload == ",":
-            score += 40
+        if payload == ",":
+            score += 50
 
     elif family == "missing_comma_args":
-        if patch.payload == ",":
-            score += 40
+        if payload == ",":
+            score += 50
+
+    elif family in {"missing_rparen", "missing_lparen_general", "mismatch_lparen_to_lbrack", "mismatch_rparen_to_rbrack"}:
+        if payload == ",":
+            score += 25
 
     # slight preference for shorter ABS replacement span
     if patch.end is not None and patch.start is not None:

@@ -238,10 +238,17 @@ def _insert_missing_rparen(source_text: str, error_line: int) -> Tuple[str, Opti
     line_no_nl = line.rstrip("\r\n")
     nl = line[len(line_no_nl):]
 
+    # classic if/while/for ... {
     if re.search(r"\b(if|while|for)\s*\(", line_no_nl) and "{" in line_no_nl and ")" not in line_no_nl:
         updated = line_no_nl.replace("{", ") {", 1)
         lines[idx] = updated + nl
         return "".join(lines), "inserted missing ')' before '{'"
+
+    # generic function call missing ')'
+    if "(" in line_no_nl and ")" not in line_no_nl and line_no_nl.strip().endswith(";"):
+        updated = line_no_nl[:-1] + ");"
+        lines[idx] = updated + nl
+        return "".join(lines), "inserted missing ')' before ';'"
 
     return source_text, None
 

@@ -20,6 +20,9 @@ from compiler.repair_logger import RepairLogger
 from compiler.symbol_table_builder import SymbolTableBuilder
 from compiler.security_engine import SecurityEngine
 from compiler.security_auto_fixer import SecurityAutoFixer
+from compiler.green_metrics import GreenMetrics
+from compiler.green_scorer import build_green_report
+from compiler.green_logger import GreenLogger
 
 try:
     from generated.SimpleCLexer import SimpleCLexer
@@ -773,6 +776,8 @@ def test_file(filename: str):
         return
 
     logger = RepairLogger()
+    green = GreenMetrics()
+    green.start_total()
     case_id = str(uuid.uuid4())
     logger.start_case(
         case_id=case_id,
@@ -781,8 +786,9 @@ def test_file(filename: str):
         meta={"runner": "test_parser.py"},
     )
 
-    MAX_LEX_EDITS = 3
-    MAX_SYN_EDITS = 5
+    MAX_LEX_EDITS = 5
+    MAX_SYN_EDITS = 120
+    NO_IMPROVE_LIMIT = 8
 
     working = source_text
     applied_steps: List[str] = []
@@ -875,7 +881,7 @@ def test_file(filename: str):
             repeat = 0
         last_sig = sig
 
-        if repeat >= 2:
+        if repeat >= 6:
             print("\nStopping: repeating same error (stuck).")
             logger.end_case(
                 status="STOPPED",
@@ -916,7 +922,7 @@ def test_file(filename: str):
                 else:
                     no_improve_rounds += 1
 
-                if no_improve_rounds >= 2:
+                if no_improve_rounds >= NO_IMPROVE_LIMIT:
                     print("\nStopping: not improving error count (stuck).")
                     logger.end_case(
                         status="STOPPED",
@@ -1045,7 +1051,7 @@ def test_file(filename: str):
         else:
             no_improve_rounds += 1
 
-        if no_improve_rounds >= 2:
+        if no_improve_rounds >= NO_IMPROVE_LIMIT:
             print("\nStopping: not improving error count (stuck).")
             logger.end_case(
                 status="STOPPED",

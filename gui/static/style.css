@@ -5,8 +5,8 @@
 body {
     margin: 0;
     font-family: Arial, sans-serif;
-    background: #1e1e1e;
-    color: #e8e8e8;
+    background: #ffffff;
+    color: #111111;
     overflow: hidden;
 }
 
@@ -15,19 +15,20 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #252526;
+    background: #ffffff;
     padding: 10px 16px;
-    border-bottom: 1px solid #3a3a3a;
+    border-bottom: 1px solid #d9d9d9;
 }
 
 .titleblock h2 {
     margin: 0;
     font-size: 22px;
+    color: #111111;
 }
 
 .subtitle {
     font-size: 12px;
-    color: #b8b8b8;
+    color: #555555;
     margin-top: 4px;
 }
 
@@ -62,8 +63,8 @@ body {
     width: 260px;
     min-width: 180px;
     max-width: 420px;
-    background: #181818;
-    border-right: 1px solid #2f2f2f;
+    background: #f8f9fb;
+    border-right: 1px solid #d9d9d9;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -71,9 +72,10 @@ body {
 
 .sidebar-header {
     padding: 12px 14px;
-    border-bottom: 1px solid #2f2f2f;
+    border-bottom: 1px solid #d9d9d9;
     font-weight: 700;
-    background: #202020;
+    background: #ffffff;
+    color: #111111;
 }
 
 .sidebar-section {
@@ -83,7 +85,7 @@ body {
 
 .sidebar-section-title {
     font-size: 12px;
-    color: #aaaaaa;
+    color: #666666;
     text-transform: uppercase;
     margin-bottom: 10px;
     letter-spacing: 0.5px;
@@ -99,18 +101,18 @@ body {
     padding: 8px 10px;
     border-radius: 6px;
     cursor: pointer;
-    color: #d8d8d8;
+    color: #222222;
     font-size: 14px;
     word-break: break-word;
 }
 
 .file-item:hover {
-    background: #2a2d2e;
+    background: #e9eef5;
 }
 
 .file-item.active {
-    background: #094771;
-    color: #ffffff;
+    background: #dbeafe;
+    color: #0b3d91;
 }
 
 .resizer {
@@ -120,24 +122,24 @@ body {
 .vertical-resizer {
     width: 6px;
     cursor: col-resize;
-    background: #222;
-    border-right: 1px solid #2d2d2d;
+    background: #f0f0f0;
+    border-right: 1px solid #d9d9d9;
 }
 
 .vertical-resizer:hover {
-    background: #3a3a3a;
+    background: #e2e8f0;
 }
 
 .horizontal-resizer {
     height: 6px;
     cursor: row-resize;
-    background: #222;
-    border-top: 1px solid #2d2d2d;
-    border-bottom: 1px solid #2d2d2d;
+    background: #f0f0f0;
+    border-top: 1px solid #d9d9d9;
+    border-bottom: 1px solid #d9d9d9;
 }
 
 .horizontal-resizer:hover {
-    background: #3a3a3a;
+    background: #e2e8f0;
 }
 
 .mainpanel {
@@ -146,12 +148,13 @@ body {
     flex-direction: column;
     min-width: 0;
     min-height: 0;
+    background: #ffffff;
 }
 
 .tabbar {
     min-height: 40px;
-    background: #252526;
-    border-bottom: 1px solid #3a3a3a;
+    background: #ffffff;
+    border-bottom: 1px solid #d9d9d9;
     display: flex;
     align-items: center;
     overflow-x: auto;
@@ -165,36 +168,36 @@ body {
 }
 
 .tabbar::-webkit-scrollbar-thumb {
-    background: #444;
+    background: #c7c7c7;
 }
 
 .filetab {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    background: #2d2d2d;
+    background: #f5f5f5;
     padding: 9px 12px;
     border-radius: 6px 6px 0 0;
-    color: #d8d8d8;
-    border: 1px solid #3a3a3a;
+    color: #333333;
+    border: 1px solid #d9d9d9;
     border-bottom: none;
     cursor: pointer;
     user-select: none;
 }
 
 .filetab.active {
-    background: #1e1e1e;
-    color: #ffffff;
+    background: #ffffff;
+    color: #111111;
 }
 
 .filetab-close {
-    color: #b8b8b8;
+    color: #777777;
     font-weight: bold;
     cursor: pointer;
 }
 
 .filetab-close:hover {
-    color: #ffffff;
+    color: #111111;
 }
 
 .top-section {
@@ -219,6 +222,7 @@ body {
     flex-direction: column;
     min-width: 220px;
     min-height: 0;
+    background: #ffffff;
 }
 
 .editor-toolbar {
@@ -226,9 +230,9 @@ body {
     display: flex;
     align-items: center;
     padding: 0 12px;
-    background: #2d2d2d;
-    border-bottom: 1px solid #3a3a3a;
-    color: #cfcfcf;
+    background: #fafafa;
+    border-bottom: 1px solid #d9d9d9;
+    color: #333333;
     font-size: 13px;
 }
 
@@ -243,21 +247,24 @@ body {
     max-width: 55%;
     overflow-y: auto;
     padding: 12px;
-    background: #202020;
+    background: #f8f9fb;
+    border-left: 1px solid #d9d9d9;
 }
 
 .panelcard {
-    background: #2a2a2a;
-    border: 1px solid #3b3b3b;
+    background: #ffffff;
+    border: 1px solid #d9d9d9;
     border-radius: 8px;
     padding: 10px 12px;
     margin-bottom: 12px;
+    color: #111111;
 }
 
 .panelcard h3 {
     margin-top: 0;
     margin-bottom: 8px;
     font-size: 16px;
+    color: #111111;
 }
 
 #status {
@@ -282,8 +289,8 @@ li {
     height: 240px;
     min-height: 120px;
     max-height: 55%;
-    border-top: 1px solid #3a3a3a;
-    background: #191919;
+    border-top: 1px solid #d9d9d9;
+    background: #ffffff;
     display: flex;
     flex-direction: column;
     padding: 12px;
@@ -300,6 +307,7 @@ li {
 .testcase-header h3 {
     margin: 0;
     font-size: 16px;
+    color: #111111;
 }
 
 .testcase-grid {
@@ -328,16 +336,16 @@ li {
 .testcase-box label {
     margin-bottom: 6px;
     font-size: 13px;
-    color: #bdbdbd;
+    color: #555555;
 }
 
 .testcase-box textarea {
     flex: 1;
     resize: none;
-    border: 1px solid #3a3a3a;
+    border: 1px solid #d9d9d9;
     border-radius: 8px;
-    background: #111111;
-    color: #e8e8e8;
+    background: #ffffff;
+    color: #111111;
     padding: 10px;
     font-family: Consolas, monospace;
     font-size: 13px;
@@ -345,41 +353,61 @@ li {
 }
 
 .status-success {
-    color: #7CFC00;
+    color: #15803d;
     font-weight: bold;
 }
 
 .status-warning {
-    color: #ffd166;
+    color: #b45309;
     font-weight: bold;
 }
 
 .status-danger {
-    color: #ff6b6b;
+    color: #dc2626;
     font-weight: bold;
 }
 
-.changedLineDecoration {
-    background: rgba(100, 255, 100, 0.16);
-}
-
-.changedGlyph {
-    background: #7CFC00;
-    width: 6px !important;
-    margin-left: 3px;
-}
-
 .normalHighlight {
-    background-color: rgba(255, 255, 0, 0.08);
+    background: rgba(0, 255, 120, 0.22) !important;
 }
 
 .securityHighlight {
-    background-color: rgba(255, 105, 180, 0.25);
-    border-left: 3px solid #ff69b4;
+    background: rgba(255, 0, 120, 0.22) !important;
+}
+
+.changedGlyph {
+    background: #00ff66;
+    width: 5px !important;
+    margin-left: 3px;
+    border-radius: 3px;
 }
 
 .securityGlyph {
-    background: #ff69b4;
-    width: 6px !important;
+    background: #ff4da6;
+    width: 5px !important;
     margin-left: 3px;
+    border-radius: 3px;
+}
+
+.progress-wrap {
+    width: 100%;
+    height: 18px;
+    background: #f3f4f6;
+    border: 1px solid #d1d5db;
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 8px;
+}
+
+.progress-bar {
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, #22c55e, #16a34a);
+    transition: width 0.25s ease;
+}
+
+.progress-text {
+    margin-top: 8px;
+    font-size: 14px;
+    color: #333333;
 }

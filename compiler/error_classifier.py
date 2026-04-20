@@ -10,22 +10,9 @@ class ErrorClassification:
 
 
 def classify_error_message(msg: str) -> ErrorClassification:
-    """
-    Classify ANTLR lexer/parser error messages into coarse repair categories.
-
-    IMPORTANT MEANING OF "fixable" HERE:
-    - True does NOT mean deterministic rule always exists.
-    - True means the pipeline should attempt repair
-      (deterministic and/or AI).
-    - False means very low-confidence / unknown case.
-    """
     lower = (msg or "").lower().strip()
 
-    # ---------------------------------------------------------
-    # Missing RHS / missing operand after assignment
-    # Example symptom:
-    #   mismatched input ';' expecting IDENTIFIER / INTEGER / ...
-    # ---------------------------------------------------------
+    # missing rhs
     if (
         "mismatched input ';' expecting" in lower
         and (
@@ -38,9 +25,7 @@ def classify_error_message(msg: str) -> ErrorClassification:
     ):
         return ErrorClassification(True, "MISSING_OPERAND", "missing_rhs")
 
-    # ---------------------------------------------------------
-    # Missing tokens (good deterministic candidates)
-    # ---------------------------------------------------------
+    # token families
     if re.search(r"missing\s+';'", lower) or re.search(r"expecting\s+';'", lower):
         return ErrorClassification(True, "MISSING_TOKEN", "missing_semicolon")
 
@@ -59,21 +44,25 @@ def classify_error_message(msg: str) -> ErrorClassification:
     if "expecting '('" in lower and "main" in lower:
         return ErrorClassification(True, "MISSING_TOKEN", "main_lparen_expected")
 
-    # ---------------------------------------------------------
-    # Extra token
-    # ---------------------------------------------------------
+    # comma heuristics from parser phrasing
+    if "extraneous input" in lower and "expecting ')'" in lower:
+        return ErrorClassification(True, "MISSING_TOKEN", "missing_comma_args")
+
+    if "mismatched input 'int' expecting ')'" in lower:
+        return ErrorClassification(True, "MISSING_TOKEN", "missing_comma_params")
+
+    if "extraneous input 'int' expecting identifier" in lower:
+        return ErrorClassification(True, "MISSING_TOKEN", "missing_comma_params")
+
+    # generic extra token
     if "extraneous input" in lower:
         return ErrorClassification(True, "EXTRA_TOKEN", "extraneous_token")
 
-    # ---------------------------------------------------------
-    # Lexer-level illegal token
-    # ---------------------------------------------------------
+    # lexer
     if "token recognition error" in lower:
         return ErrorClassification(True, "ILLEGAL_TOKEN", "illegal_token")
 
-    # ---------------------------------------------------------
-    # Broader structural parse failures
-    # ---------------------------------------------------------
+    # structural
     if "no viable alternative" in lower:
         return ErrorClassification(True, "STRUCTURAL_ERROR", "no_viable_alternative")
 
