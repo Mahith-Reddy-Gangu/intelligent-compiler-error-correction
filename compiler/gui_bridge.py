@@ -634,16 +634,139 @@ def repair_source_for_gui_stream(source_text: str, filename: str = "main.c"):
 
     green.end("syntax_repair")
 
-    final_result = repair_source_for_gui(working, filename)
-    final_result["type"] = "done"
-    final_result["total_repairs"] = (
-        final_result["stats"].get("lex_fixes", 0)
-        + final_result["stats"].get("rule_fixes", 0)
-        + final_result["stats"].get("ai_fixes", 0)
-        + final_result["stats"].get("sym_fixes", 0)
-        + final_result["stats"].get("sem_fixes", 0)
+    # ---------------------------------------------------------
+    # Final status after syntax phase
+    # ---------------------------------------------------------
+    if tree is None:
+        status = "STOPPED"
+    elif has_any_errors(listeners):
+        status = "UNFIXABLE"
+        parse_errors = get_all_error_strings(listeners)
+    else:
+        status = "PARSE_SUCCESS"
+
+    # ---------------------------------------------------------
+    # Phase 3: semantic + iterative security
+    # ---------------------------------------------------------
+    if tree is not None and not has_any_errors(listeners):
+        security_rounds = 0
+
+        while True:
+            sem_result = _run_semantic_phase_for_gui(
+                filename, working, tree, listeners, parser, steps, logs, stats, green=green
+            )
+
+            working = sem_result["working"]
+            tree = sem_result["tree"]
+            listeners = sem_result["listeners"]
+            parser = sem_result["parser"]
+            semantic_issues = sem_result.get("semantic_issues", [])
+            parse_errors = sem_result.get("parse_errors", parse_errors)
+
+            if sem_result["status"] == "STOPPED":
+                status = "STOPPED"
+                break
+
+            green.start("security_phase")
+            security_warnings = _collect_security_issues(working)
+
+            if security_warnings:
+                logs.append(f"Security issues detected: {len(security_warnings)}")
+                try:
+                    auto_fixer = SecurityAutoFixer()
+                    fix_result = auto_fixer.apply_fixes(working)
+
+                    if fix_result.source != working:
+                        changed_now = _compute_changed_lines(working, fix_result.source)
+                        security_changed_lines = sorted(set(security_changed_lines + changed_now))
+
+                        for step in fix_result.applied_steps:
+                            steps.append(step)
+                            logs.append(f"Applied security fix: {step}")
+
+                        ai_sec_count = sum(1 for s in fix_result.applied_steps if s.startswith("AISEC:"))
+                        stats["ai_fixes"] += ai_sec_count
+                        if ai_sec_count > 0:
+                            green.inc("ai_fixes", ai_sec_count)
+
+                        working = fix_result.source
+                        security_rounds += 1
+
+                        if security_rounds > 5:  # MAX_SECURITY_ROUNDS
+                            green.end("security_phase")
+                            logs.append("Stopping: exceeded maximum security reparse rounds.")
+                            status = "STOPPED"
+                            break
+
+                        tree2, listeners2, parser2 = parse_source(working, f"{filename} (gui-after-security-{security_rounds})")
+
+                        if tree2 is None or has_any_errors(listeners2):
+                            green.end("security_phase")
+                            logs.append("Stopping: security fix broke parsing.")
+                            parse_errors = get_all_error_strings(listeners2) if tree2 is not None else []
+                            status = "STOPPED"
+                            tree = tree2
+                            listeners = listeners2
+                            parser = parser2
+                            break
+
+                        tree, listeners, parser = tree2, listeners2, parser2
+                        green.end("security_phase")
+                        
+                        yield _emit_progress("fix", "Security fixes applied", working, steps, stats)
+                        continue
+                except Exception as e:
+                    logs.append(f"Security auto-fix failed: {str(e)}")
+
+            green.end("security_phase")
+
+            if semantic_issues:
+                status = "SEM_ISSUES"
+                break
+
+            status = _status_from_security(security_warnings)
+            break
+    else:
+        semantic_issues = []
+        security_warnings = _collect_security_issues(working)
+
+    # ---------------------------------------------------------
+    # Final payload
+    # ---------------------------------------------------------
+    result = {
+        "type": "done",
+        "status": status,
+        "success": status in {"SUCCESS", "SUCCESS_WITH_WARNINGS"},
+        "filename": filename,
+        "corrected_code": working,
+        "applied_steps": steps,
+        "logs": logs,
+        "errors": parse_errors,
+        "semantic_issues": semantic_issues,
+        "security_warnings": security_warnings,
+        "changed_lines": _compute_changed_lines(original_source, working),
+        "security_changed_lines": security_changed_lines,
+        "stats": stats,
+    }
+    result["total_repairs"] = (
+        stats.get("lex_fixes", 0)
+        + stats.get("rule_fixes", 0)
+        + stats.get("ai_fixes", 0)
+        + stats.get("sym_fixes", 0)
+        + stats.get("sem_fixes", 0)
     )
-    yield final_result
+
+    green.end("total")
+
+    system.sample()
+    sys_stats = system.stop()
+    energy_stats = energy.stop()
+
+    for k, v in sys_stats.items(): green.set(k, v)
+    for k, v in energy_stats.items(): green.set(k, v)
+
+    _finalize_green_report(green, filename, result)
+    yield result
 
 
 def repair_source_for_gui(source_text: str, filename: str = "main.c") -> Dict[str, Any]:
