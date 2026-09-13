@@ -14,15 +14,33 @@ from compiler.lexical_corrector import fix_common_lexical_issues
 from compiler.ai_error_corrector import ai_correct_source_patch_mode
 from compiler.ai_error_corrector import ai_generate_patch_candidates
 from compiler.identifier_corrector import fix_identifier_typo_at
-from compiler.semantic_checker import SemanticChecker
-from compiler.unused_var_fixer import remove_unused_decl_at
-from compiler.repair_logger import RepairLogger
-from compiler.symbol_table_builder import SymbolTableBuilder
-from compiler.security_engine import SecurityEngine
-from compiler.security_auto_fixer import SecurityAutoFixer
-from compiler.green_metrics import GreenMetrics
-from compiler.green_scorer import build_green_report
-from compiler.green_logger import GreenLogger
+
+try:
+    from compiler.semantic_checker import SemanticChecker
+    from compiler.unused_var_fixer import remove_unused_decl_at
+    from compiler.repair_logger import RepairLogger
+    from compiler.symbol_table_builder import SymbolTableBuilder
+    from compiler.security_engine import SecurityEngine
+    from compiler.security_auto_fixer import SecurityAutoFixer
+    from compiler.green_metrics import GreenMetrics
+    from compiler.green_scorer import build_green_report
+    from compiler.green_logger import GreenLogger
+except ModuleNotFoundError:
+    SemanticChecker = None
+    remove_unused_decl_at = None
+    RepairLogger = None
+    SecurityEngine = None
+    SecurityAutoFixer = None
+    GreenMetrics = None
+    build_green_report = None
+    GreenLogger = None
+
+    class SymbolTableBuilder:
+        def visit(self, tree):
+            return None
+
+        def get_symbols(self):
+            return {}
 
 try:
     from generated.SimpleCLexer import SimpleCLexer
@@ -246,6 +264,8 @@ def print_parse_tree(node, parser, indent: int = 0):
 
 
 def build_symbols(tree):
+    if SymbolTableBuilder is None:
+        return {}
     builder = SymbolTableBuilder()
     builder.visit(tree)
     return builder.get_symbols()
