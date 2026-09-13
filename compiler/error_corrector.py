@@ -15,7 +15,7 @@ def apply_correction(
     Returns: (new_source, applied_fix_message_or_None)
     """
 
-    new_src, msg = repair_missing_rhs(source_text, error_line)
+    new_src, msg = _repair_missing_rhs(source_text, error_line)
 
     if msg:
         return new_src, msg
@@ -378,34 +378,3 @@ def _repair_missing_rhs(source_text: str, error_line: int) -> Tuple[str, Optiona
         return "".join(lines), "inserted default RHS '0'"
 
     return source_text, None
-def repair_missing_rhs(source: str, error_line: int) -> Tuple[str, Optional[str]]:
-    """
-    Fix patterns like:
-        int x=;
-        x=;
-    """
-
-    lines = source.splitlines(keepends=True)
-
-    idx = error_line - 1
-    if idx < 0 or idx >= len(lines):
-        return source, None
-
-    line = lines[idx]
-    stripped = line.strip()
-
-    # declaration initializer missing RHS
-    m = re.match(r"(int|float|char|double)\s+[A-Za-z_]\w*\s*=\s*;", stripped)
-    if m:
-        fixed = stripped.replace("=;", "=0;")
-        lines[idx] = line.replace(stripped, fixed)
-        return "".join(lines), "inserted default initializer 0"
-
-    # simple assignment missing RHS
-    m = re.match(r"[A-Za-z_]\w*\s*=\s*;", stripped)
-    if m:
-        fixed = stripped.replace("=;", "=0;")
-        lines[idx] = line.replace(stripped, fixed)
-        return "".join(lines), "inserted default RHS 0"
-
-    return source, None

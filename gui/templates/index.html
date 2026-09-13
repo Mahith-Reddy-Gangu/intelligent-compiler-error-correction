@@ -2,19 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Hybrid AI-Assisted Compiler IDE</title>
+    <title>AI-Assisted C Error Corrector</title>
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
 </head>
 <body>
     <div class="topbar">
         <div class="titleblock">
-            <h2>Hybrid AI-Assisted Compiler IDE</h2>
-            <div class="subtitle">Syntax + Semantic + Security repair workspace</div>
+            <h2>AI-Assisted C Error Corrector</h2>
+            <div class="subtitle">Syntax + Security repair workspace</div>
         </div>
 
         <div class="controls">
-            <button onclick="runRepair()">Run Current File</button>
+            <button onclick="runRepair()">Run Repair</button>
             <button onclick="newFile()">New File</button>
             <button onclick="refreshExamples()">Refresh Files</button>
         </div>
@@ -78,45 +78,12 @@
                         </section>
 
                         <section class="panelcard">
-                            <h3>Semantic Issues</h3>
-                            <ul id="semantic"></ul>
-                        </section>
-
-                        <section class="panelcard">
                             <h3>Security Warnings</h3>
                             <ul id="security"></ul>
-                        </section>
-
-                        <section class="panelcard">
-                            <h3>Logs</h3>
-                            <ul id="logs"></ul>
                         </section>
                     </section>
                 </div>
             </div>
-
-            <div class="resizer horizontal-resizer" id="bottom-resizer"></div>
-
-            <section class="testcase-panel" id="testcase-panel">
-                <div class="testcase-header">
-                    <h3>Test Case Runner</h3>
-                    <button onclick="runTestCase()">Run Test Case</button>
-                </div>
-
-                <div class="testcase-grid" id="testcase-grid">
-                    <div class="testcase-box" id="testcase-input-box">
-                        <label for="testcase-input">Input / Test Code</label>
-                        <textarea id="testcase-input" spellcheck="false"></textarea>
-                    </div>
-
-                    <div class="resizer vertical-resizer" id="testcase-resizer"></div>
-
-                    <div class="testcase-box" id="testcase-output-box">
-                        <label for="testcase-output">Output</label>
-                        <textarea id="testcase-output" readonly spellcheck="false"></textarea>
-                    </div>
-                </div>
-            </section>
         </main>
     </div>
 

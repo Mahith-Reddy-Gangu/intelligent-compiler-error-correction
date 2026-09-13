@@ -1,9 +1,9 @@
 from flask import Flask, render_template, request, jsonify, Response, stream_with_context
 from compiler.gui_bridge import repair_source_for_gui, repair_source_for_gui_stream
 import os
+import json
 import threading
 import webbrowser
-import json
 
 app = Flask(
     __name__,
@@ -22,7 +22,6 @@ def repair():
     data = request.json or {}
     code = data.get("code", "")
     filename = data.get("filename", "main.c")
-
     result = repair_source_for_gui(code, filename)
     return jsonify(result)
 
@@ -39,15 +38,6 @@ def repair_stream():
             yield f"data: {json.dumps(event)}\n\n"
 
     return Response(generate(), mimetype="text/event-stream")
-
-@app.route("/api/testcase", methods=["POST"])
-def testcase():
-    data = request.json or {}
-    code = data.get("code", "")
-    filename = data.get("filename", "test_case.c")
-
-    result = repair_source_for_gui(code, filename)
-    return jsonify(result)
 
 
 @app.route("/api/examples")

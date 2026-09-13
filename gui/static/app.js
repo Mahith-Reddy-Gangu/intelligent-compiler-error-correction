@@ -15,10 +15,7 @@ require.config({
 
 require(["vs/editor/editor.main"], function () {
     editor = monaco.editor.create(document.getElementById("editor"), {
-        value: `int main() {
-    int a = 10
-    return 0;
-}`,
+        value: `int main() {\n    int a = 10\n    return 0;\n}`,
         language: "c",
         theme: "vs",
         automaticLayout: true,
@@ -47,11 +44,11 @@ require(["vs/editor/editor.main"], function () {
     });
 
     refreshExamples();
-    initSidebarResize();
-    initRightPanelResize();
-    initBottomResize();
-    initTestcaseResize();
 });
+
+/* -------------------------------------------------- */
+/* Utilities                                          */
+/* -------------------------------------------------- */
 
 function fillList(id, items, formatter = null) {
     const el = document.getElementById(id);
@@ -86,10 +83,9 @@ function renderStats(stats) {
 
     const rows = [
         `Lexical fixes: ${stats.lex_fixes ?? 0}`,
-        `Syntax repairs: ${stats.rule_fixes ?? 0}`,
+        `Rule fixes: ${stats.rule_fixes ?? 0}`,
         `AI fixes: ${stats.ai_fixes ?? 0}`,
         `Symbol fixes: ${stats.sym_fixes ?? 0}`,
-        `Semantic fixes: ${stats.sem_fixes ?? 0}`,
         `Iterations: ${stats.iterations ?? 0}`
     ];
 
@@ -102,176 +98,8 @@ function renderStats(stats) {
 }
 
 /* -------------------------------------------------- */
-/* GREEN REPORT PANEL */
+/* Line highlights                                    */
 /* -------------------------------------------------- */
-function ensureGreenPanel() {
-    let panel = document.getElementById("greenPanel");
-    if (panel) return panel;
-
-    const resultPanel = document.getElementById("resultpanel");
-    if (!resultPanel) return null;
-
-    panel = document.createElement("div");
-    panel.id = "greenPanel";
-    panel.className = "panelbox";
-    panel.style.marginTop = "14px";
-    panel.style.padding = "14px";
-    panel.style.borderRadius = "10px";
-    panel.style.background = "#ffffff";
-    panel.style.color = "#111111";
-    panel.style.border = "1px solid #d9d9d9";
-    panel.style.boxShadow = "0 2px 8px rgba(0,0,0,0.08)";
-
-    resultPanel.appendChild(panel);
-    return panel;
-}
-
-function renderGreenReport(report) {
-    const panel = ensureGreenPanel();
-    if (!panel) return;
-
-    if (!report || Object.keys(report).length === 0) {
-        panel.innerHTML = `
-            <div style="font-size:24px;font-weight:700;margin-bottom:10px;">Green Compiler</div>
-            <div>No green metrics yet.</div>
-        `;
-        return;
-    }
-
-    const score = report.green_score ?? 0;
-    const runtime = report.total_runtime_ms ?? 0;
-    const hotspot = report.hotspot ?? "unknown";
-    const suggestion = report.suggestion ?? "No recommendation.";
-    const phase = report.phase_ms || {};
-    const values = report.values || {};
-
-    const co2 = values.co2_kg;
-    const cpu = values.cpu_percent;
-    const memory = values.memory_mb;
-    const peakMemory = values.peak_memory_mb;
-
-    let color = "#16a34a";
-    if (score < 70) color = "#d97706";
-    if (score < 45) color = "#dc2626";
-
-    const scorePercent = Math.max(0, Math.min(100, score));
-
-    const rankedPhases = Object.entries(phase)
-        .filter(([k]) => k !== "total")
-        .sort((a, b) => Number(b[1]) - Number(a[1]));
-
-    const maxPhase = rankedPhases.length > 0 ? Number(rankedPhases[0][1]) : 1;
-
-    const phaseBars = rankedPhases.map(([name, value]) => {
-        const v = Number(value) || 0;
-        const pct = maxPhase > 0 ? (v / maxPhase) * 100 : 0;
-        const isHotspot = name === hotspot;
-
-        return `
-            <div style="margin:8px 0;">
-                <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px;">
-                    <span>${name}${isHotspot ? " 🔥" : ""}</span>
-                    <span>${v.toFixed(2)} ms</span>
-                </div>
-                <div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;">
-                    <div style="
-                        width:${pct}%;
-                        height:100%;
-                        background:${isHotspot ? "#ff8c42" : "#2ecc71"};
-                    "></div>
-                </div>
-            </div>
-        `;
-    }).join("");
-
-    const metricBars = [
-        {
-            label: "CPU",
-            value: cpu == null ? null : Number(cpu),
-            max: 100,
-            unit: "%"
-        },
-        {
-            label: "Memory",
-            value: memory == null ? null : Number(memory),
-            max: peakMemory && peakMemory > 0 ? Number(peakMemory) : (memory || 1),
-            unit: " MB"
-        },
-        {
-            label: "Peak Memory",
-            value: peakMemory == null ? null : Number(peakMemory),
-            max: peakMemory && peakMemory > 0 ? Number(peakMemory) : 1,
-            unit: " MB"
-        }
-    ].map(item => {
-        if (item.value == null) {
-            return `
-                <div style="margin:8px 0;">
-                    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px;">
-                        <span>${item.label}</span>
-                        <span>N/A</span>
-                    </div>
-                    <div style="height:10px;background:#e5e7eb;border-radius:999px;"></div>
-                </div>
-            `;
-        }
-
-        const pct = item.max > 0 ? Math.max(0, Math.min(100, (item.value / item.max) * 100)) : 0;
-
-        return `
-            <div style="margin:8px 0;">
-                <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px;">
-                    <span>${item.label}</span>
-                    <span>${item.value.toFixed(2)}${item.unit}</span>
-                </div>
-                <div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;">
-                    <div style="
-                        width:${pct}%;
-                        height:100%;
-                        background:#4da3ff;
-                    "></div>
-                </div>
-            </div>
-        `;
-    }).join("");
-
-    panel.innerHTML = `
-    <div style="font-size:24px;font-weight:700;margin-bottom:12px;">
-        Green Compiler
-    </div>
-
-    <div style="font-size:32px;font-weight:800;color:${color};margin-bottom:8px;">
-        ${score}/100
-    </div>
-
-    <div style="margin-bottom:10px;">
-        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
-            <span>Green Score</span>
-            <span>${scorePercent.toFixed(0)}%</span>
-        </div>
-        <div style="height:14px;background:#e5e7eb;border-radius:999px;overflow:hidden;">
-            <div style="
-                width:${scorePercent}%;
-                height:100%;
-                background:${color};
-            "></div>
-        </div>
-    </div>
-
-    <div style="margin-bottom:6px;">Runtime: ${Number(runtime).toFixed(2)} ms</div>
-    <div style="margin-bottom:6px;">CO₂: ${co2 == null ? "N/A" : Number(co2).toExponential(3)} kg</div>
-    <div style="margin-bottom:6px;">Hotspot: <b>${hotspot}</b></div>
-
-    <div style="margin-bottom:12px;">
-        <b>Suggestion:</b><br>${suggestion}
-    </div>
-
-    <div style="margin-top:16px;margin-bottom:6px;font-size:18px;font-weight:700;">
-        System Metrics Graph
-    </div>
-    ${metricBars}
-`;
-}
 
 function highlightLines(changedLines, securityLines) {
     if (!editor) return;
@@ -301,17 +129,18 @@ function clearChangedLineHighlights() {
     currentDecorations = editor.deltaDecorations(currentDecorations, []);
 }
 
+/* -------------------------------------------------- */
+/* Status / Progress                                  */
+/* -------------------------------------------------- */
+
 function setStatus(statusText) {
     const el = document.getElementById("status");
     if (!el) return;
 
     el.innerText = statusText || "Unknown";
-
     el.className = "";
+
     if (statusText === "SUCCESS") el.classList.add("status-success");
-    else if (statusText === "SUCCESS_WITH_WARNINGS") el.classList.add("status-warning");
-    else if (statusText === "BLOCKED_SECURITY") el.classList.add("status-danger");
-    else if (statusText === "SEM_ISSUES") el.classList.add("status-warning");
     else if (statusText === "UNFIXABLE" || statusText === "STOPPED") el.classList.add("status-danger");
 }
 
@@ -334,23 +163,23 @@ function resetProgress() {
 function resetPanels() {
     fillList("steps", []);
     fillList("errors", []);
-    fillList("semantic", []);
     fillList("security", []);
-    fillList("logs", []);
 
     renderStats({
         lex_fixes: 0,
         rule_fixes: 0,
         ai_fixes: 0,
         sym_fixes: 0,
-        sem_fixes: 0,
         iterations: 0
     });
 
-    renderGreenReport({});
     clearChangedLineHighlights();
     resetProgress();
 }
+
+/* -------------------------------------------------- */
+/* Tab management                                     */
+/* -------------------------------------------------- */
 
 function renderTabs() {
     const tabbar = document.getElementById("tabbar");
@@ -401,7 +230,6 @@ function closeTab(filename) {
 
     const idx = openTabs.indexOf(filename);
     if (idx !== -1) openTabs.splice(idx, 1);
-
     delete openFiles[filename];
 
     if (currentFilename === filename) {
@@ -426,10 +254,17 @@ function openFileInTab(filename, code) {
     resetPanels();
 }
 
+function newFile() {
+    location.reload();
+}
+
+/* -------------------------------------------------- */
+/* Repair result rendering                            */
+/* -------------------------------------------------- */
+
 function computeChangedLines(beforeCode, afterCode) {
     const before = (beforeCode || "").split("\n");
     const after = (afterCode || "").split("\n");
-
     const maxLen = Math.max(before.length, after.length);
     const changed = [];
 
@@ -452,30 +287,18 @@ function renderRepairResult(data) {
 
     fillList("steps", data.applied_steps || []);
     fillList("errors", data.errors || []);
-
-    fillList(
-        "semantic",
-        data.semantic_issues || [],
-        (item) => {
-            const kind = item.kind || "issue";
-            const line = item.line ?? "?";
-            const col = item.col ?? "?";
-            const msg = item.msg || "";
-            const name = item.name ? ` (${item.name})` : "";
-            return `${kind}${name} at L${line}:${col} -> ${msg}`;
-        }
-    );
-
     fillList("security", data.security_warnings || []);
-    fillList("logs", data.logs || []);
     renderStats(data.stats || {});
-    renderGreenReport(data.green_report || {});
 
     const changedLines = computeChangedLines(beforeCode, afterCode);
     highlightLines(changedLines, data.security_changed_lines || []);
 
     repairOriginalCode = null;
 }
+
+/* -------------------------------------------------- */
+/* Repair (streaming)                                 */
+/* -------------------------------------------------- */
 
 async function runRepair() {
     if (!editor) return;
@@ -534,35 +357,16 @@ async function runRepair() {
             }
 
             if (data.type === "done") {
-                setProgress(100, `Done - ${data.total_repairs || 0} repairs`);
+                setProgress(100, `Done — ${data.total_repairs || 0} repairs`);
                 renderRepairResult(data);
             }
         }
     }
 }
 
-async function runTestCase() {
-    const input = document.getElementById("testcase-input").value;
-    const output = document.getElementById("testcase-output");
-
-    output.value = "Running...";
-
-    const response = await fetch("/api/testcase", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            code: input,
-            filename: "test_case.c"
-        })
-    });
-
-    const data = await response.json();
-
-    output.value =
-        `STATUS: ${data.status || "Unknown"}\n\n` +
-        `CORRECTED CODE:\n${data.corrected_code || ""}\n\n` +
-        `GREEN SCORE: ${data.green_report?.green_score ?? "NA"}\n\n`;
-}
+/* -------------------------------------------------- */
+/* Examples sidebar                                   */
+/* -------------------------------------------------- */
 
 async function refreshExamples() {
     const listRes = await fetch("/api/examples");
@@ -588,10 +392,3 @@ async function refreshExamples() {
         tree.appendChild(item);
     });
 }
-
-/* Keep your resize functions unchanged */
-function newFile(){ location.reload(); }
-function initSidebarResize(){}
-function initRightPanelResize(){}
-function initBottomResize(){}
-function initTestcaseResize(){}
